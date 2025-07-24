@@ -7,7 +7,7 @@ pub type QToken = raw::demi_qtoken_t;
 pub type Sgarray = raw::demi_sgarray;
 pub type SocketQd = u32;
 
-const ADDR_SIZE: u32 = std::mem::size_of::<sockaddr_in>() as u32;
+const ADDR_SIZE: u32 = std::mem::size_of::<raw::sockaddr_in>() as u32;
 
 pub enum Opcode {
     INVALID = 0,
@@ -136,8 +136,9 @@ impl Socket {
     }
 
     #[inline]
-    pub fn bind(&mut self, addr: &sockaddr_in) -> PosixResult<()> {
-        let addr_ptr = addr as *const sockaddr_in as *const raw::sockaddr;
+    pub fn bind(&mut self, addr: &Ipv4Addr, port: u16) -> PosixResult<()> {
+        let addr = helpers::ipv4_to_sockaddr_in(*addr, port);
+        let addr_ptr = &addr as *const raw::sockaddr_in as *const raw::sockaddr;
         return PosixError::from_errno(unsafe {
             raw::demi_bind(self.qd as c_int, addr_ptr, ADDR_SIZE)
         });
@@ -155,8 +156,9 @@ impl Socket {
     }
 
     #[inline]
-    pub fn connect(&mut self, addr: &sockaddr_in) -> PosixResult<QToken> {
-        let addr_ptr = addr as *const sockaddr_in as *const raw::sockaddr;
+    pub fn connect(&mut self, addr: &Ipv4Addr, port: u16) -> PosixResult<QToken> {
+        let addr = helpers::ipv4_to_sockaddr_in(*addr, port);
+        let addr_ptr = &addr as *const raw::sockaddr_in as *const raw::sockaddr;
         let mut tok: QToken = 0;
         PosixError::from_errno(unsafe {
             raw::demi_connect(&mut tok, self.qd as c_int, addr_ptr, ADDR_SIZE)
