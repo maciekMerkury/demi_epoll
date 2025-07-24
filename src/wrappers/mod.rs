@@ -2,6 +2,6 @@
 mod raw;
 
 #[allow(unused)]
-pub mod nice;
+pub mod demi;
 pub mod helpers;
 pub mod errno;
