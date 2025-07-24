@@ -1,5 +1,5 @@
-use std::{net::Ipv4Addr, time::Duration};
 use super::raw;
+use std::{net::Ipv4Addr, time::Duration};
 
 pub fn duration_to_timespec(duration: Duration) -> raw::timespec {
     raw::timespec {
@@ -26,4 +26,3 @@ pub fn sockaddr_in_to_ipv4(addr: raw::sockaddr_in) -> (Ipv4Addr, u16) {
     let port = u16::from_be(addr.sin_port);
     return (ip, port);
 }
-

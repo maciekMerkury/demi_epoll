@@ -277,10 +277,10 @@ impl PosixError {
     pub fn from_errno(errno: c_int) -> Result<(), Self> {
         use PosixError::*;
 
-        if errno == 0 { 
+        if errno == 0 {
             return Ok(());
         } else if errno <= 133 {
-            let var: PosixError = unsafe {std::mem::transmute(errno)};
+            let var: PosixError = unsafe { std::mem::transmute(errno) };
             return Err(var);
         } else {
             panic!("invalid errno: {}\n", errno);
@@ -430,4 +430,3 @@ impl std::convert::Into<c_int> for PosixError {
 }
 
 pub type PosixResult<T> = Result<T, PosixError>;
-

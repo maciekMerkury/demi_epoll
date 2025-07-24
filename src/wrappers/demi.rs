@@ -1,6 +1,14 @@
-use libc::{self, sockaddr_in, AF_INET, SOCK_STREAM};
-use super::{errno::{PosixError, PosixResult}, raw, helpers};
-use std::{mem::MaybeUninit, net::Ipv4Addr, os::raw::{c_int, c_uint}, time::Duration};
+use super::{
+    errno::{PosixError, PosixResult},
+    helpers, raw,
+};
+use libc::{self, AF_INET, SOCK_STREAM, sockaddr_in};
+use std::{
+    mem::MaybeUninit,
+    net::Ipv4Addr,
+    os::raw::{c_int, c_uint},
+    time::Duration,
+};
 use thiserror::Error;
 
 pub type QToken = raw::demi_qtoken_t;
@@ -57,14 +65,14 @@ impl std::convert::From<raw::demi_accept_result> for AcceptResult {
     fn from(value: raw::demi_accept_result) -> Self {
         return Self {
             qd: value.qd.into(),
-            addr: helpers::sockaddr_in_to_ipv4(value.addr).0
-        }
+            addr: helpers::sockaddr_in_to_ipv4(value.addr).0,
+        };
     }
 }
 
 pub enum QResultValue {
     Sga(Sgarray),
-    Ares(AcceptResult)
+    Ares(AcceptResult),
 }
 
 pub struct QResult {
@@ -79,8 +87,8 @@ impl std::convert::From<raw::demi_qresult> for QResult {
     fn from(value: raw::demi_qresult) -> Self {
         let opcode = value.qr_opcode.try_into().unwrap();
         let val = match opcode {
-            Opcode::PUSH | Opcode::POP => Some(QResultValue::Sga(unsafe {value.qr_value.sga})),
-            Opcode::ACCEPT => Some(QResultValue::Ares(unsafe {value.qr_value.ares}.into())),
+            Opcode::PUSH | Opcode::POP => Some(QResultValue::Sga(unsafe { value.qr_value.sga })),
+            Opcode::ACCEPT => Some(QResultValue::Ares(unsafe { value.qr_value.ares }.into())),
             _ => None,
         };
         return Self {
@@ -112,9 +120,7 @@ pub struct Socket {
 
 impl std::convert::From<c_int> for Socket {
     fn from(value: c_int) -> Self {
-        return Self {
-            qd: value as u32,
-        };
+        return Self { qd: value as u32 };
     }
 }
 
@@ -122,17 +128,13 @@ impl Socket {
     #[inline]
     pub fn new() -> PosixResult<Self> {
         let mut qd: c_int = 0;
-        PosixError::from_errno(unsafe {
-            raw::demi_socket(&mut qd, AF_INET, SOCK_STREAM, 0)
-        })?;
+        PosixError::from_errno(unsafe { raw::demi_socket(&mut qd, AF_INET, SOCK_STREAM, 0) })?;
         return Ok(qd.into());
     }
 
     #[inline]
     pub fn listen(&mut self, backlog: i32) -> PosixResult<()> {
-        return PosixError::from_errno(unsafe {
-            raw::demi_listen(self.qd as c_int, backlog)
-        });
+        return PosixError::from_errno(unsafe { raw::demi_listen(self.qd as c_int, backlog) });
     }
 
     #[inline]
@@ -148,9 +150,7 @@ impl Socket {
     pub fn accept(&mut self) -> PosixResult<QToken> {
         let mut tok: QToken = 0;
 
-        PosixError::from_errno(unsafe {
-            raw::demi_accept(&mut tok, self.qd as c_int)
-        })?;
+        PosixError::from_errno(unsafe { raw::demi_accept(&mut tok, self.qd as c_int) })?;
 
         return Ok(tok);
     }
@@ -169,17 +169,13 @@ impl Socket {
 
     #[inline]
     pub fn close(&mut self) -> PosixResult<()> {
-        return PosixError::from_errno(unsafe {
-            raw::demi_close(self.qd as c_int)
-        });
+        return PosixError::from_errno(unsafe { raw::demi_close(self.qd as c_int) });
     }
 
     #[inline]
     pub fn push(&mut self, sga: &Sgarray) -> PosixResult<QToken> {
         let mut tok: QToken = 0;
-        PosixError::from_errno(unsafe {
-            raw::demi_push(&mut tok, self.qd as c_int, sga)
-        })?;
+        PosixError::from_errno(unsafe { raw::demi_push(&mut tok, self.qd as c_int, sga) })?;
 
         return Ok(tok);
     }
@@ -187,9 +183,7 @@ impl Socket {
     #[inline]
     pub fn pop(&mut self) -> PosixResult<QToken> {
         let mut tok: QToken = 0;
-        PosixError::from_errno(unsafe {
-            raw::demi_pop(&mut tok, self.qd as c_int)
-        })?;
+        PosixError::from_errno(unsafe { raw::demi_pop(&mut tok, self.qd as c_int) })?;
 
         return Ok(tok);
     }
@@ -205,10 +199,8 @@ pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<QResult> {
         std::ptr::null()
     };
 
-    PosixError::from_errno(unsafe {
-        raw::demi_wait(res.as_mut_ptr(), tok, ts_ptr)
-    })?;
-    return Ok(unsafe {res.assume_init()}.into());
+    PosixError::from_errno(unsafe { raw::demi_wait(res.as_mut_ptr(), tok, ts_ptr) })?;
+    return Ok(unsafe { res.assume_init() }.into());
 }
 
 pub fn wait_any(toks: &[QToken], timeout: Option<Duration>) -> PosixResult<(usize, QResult)> {
@@ -223,12 +215,17 @@ pub fn wait_any(toks: &[QToken], timeout: Option<Duration>) -> PosixResult<(usiz
     let mut off = MaybeUninit::uninit();
 
     PosixError::from_errno(unsafe {
-        raw::demi_wait_any(res.as_mut_ptr(), off.as_mut_ptr(), toks.as_ptr(), toks.len().try_into().unwrap(), ts_ptr)
+        raw::demi_wait_any(
+            res.as_mut_ptr(),
+            off.as_mut_ptr(),
+            toks.as_ptr(),
+            toks.len().try_into().unwrap(),
+            ts_ptr,
+        )
     })?;
 
     return Ok((
-            unsafe {off.assume_init()}.try_into().unwrap(),
-            unsafe {res.assume_init()}.into()
-            ));
+        unsafe { off.assume_init() }.try_into().unwrap(),
+        unsafe { res.assume_init() }.into(),
+    ));
 }
-
