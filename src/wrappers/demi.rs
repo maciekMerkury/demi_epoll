@@ -191,14 +191,14 @@ impl std::convert::TryFrom<c_uint> for Opcode {
 #[derive(Debug)]
 pub struct AcceptResult {
     pub qd: SocketQd,
-    pub addr: Ipv4Addr,
+    pub addr: sockaddr_in,
 }
 
 impl std::convert::From<raw::demi_accept_result> for AcceptResult {
     fn from(value: raw::demi_accept_result) -> Self {
         return Self {
             qd: value.qd.into(),
-            addr: helpers::sockaddr_in_to_ipv4(value.addr).0,
+            addr: value.addr.cast(),
         };
     }
 }
