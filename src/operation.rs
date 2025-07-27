@@ -52,21 +52,39 @@ impl<P, T> Operation<P, T>
 where P: Debug,
       T: Schedulable + Debug
 {
+    pub const fn default() -> Self {
+        return Self::None;
+    }
+
     pub fn new(tok: demi::QToken, payload: P) -> Self {
         return Self::Running { payload, tok };
     }
 
+    pub fn schedule(&mut self, tok: demi::QToken, payload: P) {
+        assert!(matches!(self, Operation::None));
+
+        *self = Self::new(tok, payload);
+    }
+
     pub fn get(&mut self) -> PosixResult<T> {
-        use Operation::*;
-        if let Completed(res) = mem::replace(self, None) {
-            return res;
-        } else {
-            panic!("cannot get a {:?}", self);
+        match mem::replace(self, Operation::None) {
+            Operation::Completed(res) => return res,
+            other => panic!("cannot get a {:?}", other),
         }
+    }
+
+    pub fn get_mut(&mut self) -> PosixResult<&mut T> {
+        match self {
+            Operation::Completed(res) => return res.as_mut().map_err(|e| *e),
+            other => panic!("cannot get a {:?}", other),
+        };
     }
 
     pub fn is_finished(&self) -> bool {
         return matches!(self, Self::Completed(_));
+    }
+    pub fn is_running(&self) -> bool {
+        return matches!(self, Self::Running { payload, tok });
     }
 
     pub fn get_or_schedule<F>(&mut self, func: F) -> Option<PosixResult<T>>

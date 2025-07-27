@@ -1,11 +1,10 @@
 use super::{
     errno::{PosixError, PosixResult},
-    helpers, raw::{self, demi_sgarray, demi_sgaseg},
+    helpers::{self, WrapperConversion}, raw::{self, demi_sgarray, demi_sgaseg},
 };
 use libc::{self, AF_INET, SOCK_STREAM, sockaddr_in};
 use std::{
     mem::MaybeUninit,
-    net::Ipv4Addr,
     os::raw::{c_int, c_uint},
     time::Duration,
 };
@@ -18,6 +17,9 @@ type DemiQd = u32;
 pub struct SgArray {
     sga: raw::demi_sgarray,
 }
+
+/// Safety: `SgArray` owns the `sga`
+unsafe impl Send for SgArray {}
 
 impl std::convert::From<demi_sgarray> for SgArray {
     fn from(sga: demi_sgarray) -> Self {
@@ -40,6 +42,12 @@ impl SgArray {
 
     pub fn len(&self) -> usize {
         return unsafe { self.segments() }.iter().map(|s| s.sgaseg_len as usize).sum();
+    }
+
+    pub fn from_slice(src: &[u8]) -> Self {
+        let mut sga = Self::new(src.len());
+        sga.fill(src);
+        return sga;
     }
 
     unsafe fn segments(&self) -> &[raw::demi_sgaseg] {
@@ -102,7 +110,7 @@ impl SgArrayByteIter {
 
     /// copies K bytes into dst
     /// if the returned number of bytes is less than `dst.len()`, then `self.is_empty()` will be true
-    pub fn copy_bytes(&mut self, mut dst: &mut [u8]) -> Option<usize> {
+    pub fn copy_bytes(&mut self, mut dst: &mut [MaybeUninit<u8>]) -> Option<usize> {
         if self.is_empty() {
             return None;
         }
@@ -127,7 +135,7 @@ impl SgArrayByteIter {
 
             unsafe {
                 let src = seg.sgaseg_buf.add(self.byte_off) as *const u8;
-                let dst = dst.as_mut_ptr();
+                let dst = dst.as_mut_ptr() as *mut u8;
 
                 std::ptr::copy_nonoverlapping(src, dst, copy_len);
             }
