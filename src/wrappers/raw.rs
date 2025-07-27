@@ -1457,7 +1457,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn listen(__fd: ::std::os::raw::c_int, __n: ::std::os::raw::c_int)
-    -> ::std::os::raw::c_int;
+        -> ::std::os::raw::c_int;
 }
 unsafe extern "C" {
     pub fn accept(
@@ -2045,7 +2045,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     pub fn demi_pop(qt_out: *mut demi_qtoken_t, qd: ::std::os::raw::c_int)
-    -> ::std::os::raw::c_int;
+        -> ::std::os::raw::c_int;
 }
 unsafe extern "C" {
     pub fn demi_setsockopt(
@@ -2317,6 +2317,12 @@ unsafe extern "C" {
         num_qrs_out: *mut ::std::os::raw::c_int,
         timeout: *const timespec,
     ) -> ::std::os::raw::c_int;
+}
+unsafe extern "C" {
+    pub fn demi_sgaalloc(size: usize) -> demi_sgarray_t;
+}
+unsafe extern "C" {
+    pub fn demi_sgafree(sga: *mut demi_sgarray_t) -> ::std::os::raw::c_int;
 }
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]

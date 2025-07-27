@@ -2,7 +2,7 @@ use std::os::raw::c_int;
 use thiserror::Error;
 
 #[allow(dead_code)]
-#[derive(Debug, Clone, Copy, Error)]
+#[derive(Debug, Clone, Copy, Error, PartialEq, Eq)]
 #[repr(i32)]
 pub enum PosixError {
     #[error("Operation not permitted")]
