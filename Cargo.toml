@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+bitfields = "1.0.0"
 libc = { version = "0.2.174", features = ["extra_traits"] }
 thiserror = "2"
 
