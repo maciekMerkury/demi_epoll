@@ -2,7 +2,7 @@ use super::{
     errno::{PosixError, PosixResult},
     helpers::{self, WrapperConversion}, raw::{self, demi_sgarray, demi_sgaseg},
 };
-use libc::{self, AF_INET, SOCK_STREAM, sockaddr_in};
+use libc::{self, iovec, sockaddr_in, AF_INET, SOCK_STREAM};
 use std::{
     mem::MaybeUninit,
     os::raw::{c_int, c_uint},
@@ -50,6 +50,13 @@ impl SgArray {
         return sga;
     }
 
+    pub fn from_slices(src: &[libc::iovec]) -> Self {
+        let total_len = src.iter().map(|s| s.iov_len).sum();
+        let mut sga = Self::new(total_len);
+        sga.fill_from_slices(src);
+        return sga;
+    }
+
     unsafe fn segments(&self) -> &[raw::demi_sgaseg] {
         return unsafe {
             std::slice::from_raw_parts(self.sga.sga_segs.as_ptr(), self.sga.sga_numsegs as usize)
@@ -71,6 +78,33 @@ impl SgArray {
             }
 
             offset += len;
+        }
+    }
+
+    /// will panic if `src.iter().map(|s| s.len()).sum() < self.len()`
+    pub fn fill_from_slices(&mut self, mut src: &[libc::iovec]) {
+        assert!(src.iter().map(|s| s.iov_len).sum::<usize>() >= self.len());
+
+        let mut src_off = 0;
+        for seg in unsafe { self.segments() } {
+            let mut seg_off = 0;
+            let len = seg.sgaseg_len as usize;
+            let ptr = seg.sgaseg_buf as *mut u8;
+
+            while seg_off < len {
+                let bytes_left = len.saturating_sub(seg_off).min(src[0].iov_len.saturating_sub(src_off));
+
+                unsafe {
+                    std::ptr::copy_nonoverlapping((src[0].iov_base as *const u8).add(src_off), ptr.add(seg_off), bytes_left);
+                }
+
+                seg_off += bytes_left;
+                src_off += bytes_left;
+                if src_off >= src[0].iov_len {
+                    src = &src[1..];
+                    src_off = 0;
+                }
+            }
         }
     }
 
@@ -153,6 +187,25 @@ impl SgArrayByteIter {
         return Some(total_copied);
     }
 
+    pub fn copy_into_iovecs(&mut self, iovecs: &mut [iovec]) -> Option<usize> {
+        if self.is_empty() {
+            return None;
+        }
+
+        let mut total_copied = 0;
+
+        for vec in iovecs.into_iter() {
+            if self.is_empty() {
+                break;
+            }
+
+            let vec = unsafe { std::ptr::slice_from_raw_parts_mut(vec.iov_base as *mut MaybeUninit<u8>, vec.iov_len).as_mut().unwrap() };
+
+            total_copied += self.copy_bytes(vec).unwrap();
+        }
+
+        return Some(total_copied);
+    }
 }
 
 const ADDR_SIZE: u32 = std::mem::size_of::<raw::sockaddr_in>() as u32;
@@ -375,3 +428,4 @@ pub fn wait_any(toks: &[QToken], timeout: Option<Duration>) -> PosixResult<(usiz
         unsafe { res.assume_init() }.try_into(),
     ));
 }
+

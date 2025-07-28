@@ -1,5 +1,6 @@
 
 use std::mem::MaybeUninit;
+use std::usize;
 
 use crate::operation::Operation;
 
@@ -87,7 +88,9 @@ impl Socket {
         return Ok(soc);
     }
 
-    pub fn write(&mut self, src: &[u8]) -> PosixResult<usize> {
+    fn write_impl<F>(&mut self, func: F) -> PosixResult<usize>
+        where F: FnOnce() -> demi::SgArray
+    {
         let write = match &mut self.data {
             SocketData::Active { write, read } => write,
             _ => return Err(PosixError::INVAL),
@@ -99,13 +102,23 @@ impl Socket {
             return Err(PosixError::WOULDBLOCK);
         }
 
-        let sga = demi::SgArray::from_slice(src);
+        let sga = func();
+        let len = sga.len();
         write.schedule(self.soc.push(&sga).unwrap(), sga);
-
-        return Ok(src.len());
+        return Ok(len);
     }
 
-    pub fn read(&mut self, dst: &mut [MaybeUninit<u8>]) -> PosixResult<usize> {
+    pub fn write(&mut self, src: &[u8]) -> PosixResult<usize> {
+        return self.write_impl(|| demi::SgArray::from_slice(src));
+    }
+
+    pub fn writev(&mut self, src: &[libc::iovec]) -> PosixResult<usize> {
+        return self.write_impl(|| demi::SgArray::from_slices(src));
+    }
+
+    fn read_impl<F>(&mut self, func: F) -> PosixResult<usize>
+        where F: FnOnce(&mut demi::SgArrayByteIter) -> usize
+    {
         let read = match &mut self.data {
             SocketData::Active { write, read } => read,
             _ => return Err(PosixError::INVAL),
@@ -116,13 +129,23 @@ impl Socket {
             return Err(PosixError::WOULDBLOCK);
         }
         let iter = read.get_mut().unwrap();
-        let len = iter.copy_bytes(dst).unwrap();
+
+        let len = func(iter);
+
         if iter.is_empty() {
             let _ = read.get();
             read.schedule(self.soc.pop().unwrap(), ());
         }
 
         return Ok(len);
+    }
+
+    pub fn read(&mut self, dst: &mut [MaybeUninit<u8>]) -> PosixResult<usize> {
+        return self.read_impl(|it| it.copy_bytes(dst).unwrap());
+    }
+
+    pub fn readv(&mut self, dst: &mut [libc::iovec]) -> PosixResult<usize> {
+        return self.read_impl(|it| it.copy_into_iovecs(dst).unwrap());
     }
 }
 

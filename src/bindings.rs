@@ -1,3 +1,4 @@
+use core::slice;
 use std::{cell::RefCell, mem::{self, MaybeUninit}, os::raw::{c_int, c_void}, sync::Mutex};
 use libc::{epoll_event, iovec, sigset_t, size_t, sockaddr, sockaddr_in, socklen_t, ssize_t, AF_INET, SOCK_STREAM};
 use crate::{buffer::{Buffer, self as buf}, socket::Socket, wrappers::{demi, errno::{PosixError, PosixResult}}};
@@ -137,12 +138,38 @@ pub unsafe extern "C" fn dpoll_read(socket_fd: c_int, buf: *mut c_void, len: siz
     };
 }
 
-pub unsafe extern "C" fn dpoll_writev(socket_fd: c_int, vecs: *const iovec, len: c_int) -> ssize_t {
-    todo!();
+pub unsafe extern "C" fn dpoll_writev(socket_fd: c_int, vecs: *const iovec, iovec_count: c_int) -> ssize_t {
+    let idx: buf::Index = socket_fd.into();
+    assert!(idx.is_dpoll());
+    assert!(idx.is_socket());
+
+    let vecs = unsafe {
+        std::ptr::slice_from_raw_parts(vecs, iovec_count.try_into().unwrap()).as_ref()
+    }.unwrap();
+
+    let res = SOCKETS.lock().unwrap().get_mut().get_mut(idx).unwrap().writev(vecs);
+
+    return match res {
+        Ok(len) => len.try_into().unwrap(),
+        Err(e) => errno(e) as isize,
+    };
 }
 
-pub unsafe extern "C" fn dpoll_readv(socket_fd: c_int, vecs: *mut iovec, len: c_int) -> ssize_t {
-    todo!();
+pub unsafe extern "C" fn dpoll_readv(socket_fd: c_int, vecs: *mut iovec, iovec_count: c_int) -> ssize_t {
+    let idx: buf::Index = socket_fd.into();
+    assert!(idx.is_dpoll());
+    assert!(idx.is_socket());
+
+    let vecs = unsafe {
+        std::ptr::slice_from_raw_parts_mut(vecs, iovec_count.try_into().unwrap()).as_mut()
+    }.unwrap();
+
+    let res = SOCKETS.lock().unwrap().get_mut().get_mut(idx).unwrap().readv(vecs);
+
+    return match res {
+        Ok(len) => len.try_into().unwrap(),
+        Err(e) => errno(e) as isize,
+    };
 }
 
 pub unsafe extern "C" fn dpoll_init() -> c_int {
