@@ -9,7 +9,8 @@ pub fn duration_to_timespec(duration: Duration) -> raw::timespec {
 }
 
 pub trait WrapperConversion<Other>: Sized
-where Other: Sized,
+where
+    Other: Sized,
 {
     fn cast(self) -> Other;
 }
@@ -19,4 +20,3 @@ impl WrapperConversion<libc::sockaddr_in> for raw::sockaddr_in {
         return unsafe { std::mem::transmute(self) };
     }
 }
-

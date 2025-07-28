@@ -1,4 +1,3 @@
-
 use std::mem::MaybeUninit;
 use std::usize;
 
@@ -9,7 +8,7 @@ use crate::wrappers::{demi, errno::PosixResult};
 
 enum SocketData {
     Passive {
-        accept: Operation<(), demi::AcceptResult>
+        accept: Operation<(), demi::AcceptResult>,
     },
 
     Active {
@@ -20,11 +19,16 @@ enum SocketData {
 
 impl SocketData {
     pub const fn new_passive() -> Self {
-        return Self::Passive { accept: Operation::default() };
+        return Self::Passive {
+            accept: Operation::default(),
+        };
     }
 
     pub const fn new_active() -> Self {
-        return Self::Active { write: Operation::default(), read: Operation::default() };
+        return Self::Active {
+            write: Operation::default(),
+            read: Operation::default(),
+        };
     }
 }
 
@@ -57,7 +61,9 @@ impl Socket {
         return Self {
             soc,
             addr: None,
-            data: SocketData::Passive { accept: Operation::None },
+            data: SocketData::Passive {
+                accept: Operation::None,
+            },
         };
     }
 
@@ -66,7 +72,7 @@ impl Socket {
         self.soc.bind(addr)?;
         self.data = SocketData::new_passive();
         self.addr = Some(*addr);
-        
+
         return Ok(());
     }
 
@@ -75,13 +81,19 @@ impl Socket {
         return self.soc.listen(backlog);
     }
 
-    pub fn accept(&mut self, addr: Option<&mut MaybeUninit<libc::sockaddr_in>>) -> PosixResult<Self> {
+    pub fn accept(
+        &mut self,
+        addr: Option<&mut MaybeUninit<libc::sockaddr_in>>,
+    ) -> PosixResult<Self> {
         let data = match &mut self.data {
             SocketData::Passive { accept } => accept,
             _ => return Err(PosixError::INVAL),
         };
 
-        let soc: Socket = data.get_or_schedule(|| (self.soc.accept().unwrap(), ())).unwrap_or(Err(PosixError::WOULDBLOCK)).map(From::from)?;
+        let soc: Socket = data
+            .get_or_schedule(|| (self.soc.accept().unwrap(), ()))
+            .unwrap_or(Err(PosixError::WOULDBLOCK))
+            .map(From::from)?;
         if let Some(addr) = addr {
             addr.write(soc.addr.unwrap());
         }
@@ -89,7 +101,8 @@ impl Socket {
     }
 
     fn write_impl<F>(&mut self, func: F) -> PosixResult<usize>
-        where F: FnOnce() -> demi::SgArray
+    where
+        F: FnOnce() -> demi::SgArray,
     {
         let write = match &mut self.data {
             SocketData::Active { write, read } => write,
@@ -117,7 +130,8 @@ impl Socket {
     }
 
     fn read_impl<F>(&mut self, func: F) -> PosixResult<usize>
-        where F: FnOnce(&mut demi::SgArrayByteIter) -> usize
+    where
+        F: FnOnce(&mut demi::SgArrayByteIter) -> usize,
     {
         let read = match &mut self.data {
             SocketData::Active { write, read } => read,

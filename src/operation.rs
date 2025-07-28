@@ -1,6 +1,13 @@
-use std::{fmt::Debug, mem::{self}, time::Duration};
+use std::{
+    fmt::Debug,
+    mem::{self},
+    time::Duration,
+};
 
-use crate::wrappers::{demi::{self, QResult, QToken}, errno::{PosixError, PosixResult}};
+use crate::wrappers::{
+    demi::{self, QResult, QToken},
+    errno::{PosixError, PosixResult},
+};
 
 pub trait Schedulable: Sized {
     fn from_qresult(result: QResult) -> Self;
@@ -26,7 +33,7 @@ impl Schedulable for () {
 impl Schedulable for demi::SgArrayByteIter {
     fn from_qresult(result: QResult) -> Self {
         let val = result.value.unwrap();
-        if let demi::QResultValue::Pop(buf) = val{
+        if let demi::QResultValue::Pop(buf) = val {
             return buf.into_iter();
         } else {
             panic!("cannot create SgArrayByteIter from {:?}", val);
@@ -37,20 +44,19 @@ impl Schedulable for demi::SgArrayByteIter {
 /// takes ownership of payload P, which will be dropped in transition to Completed
 #[derive(Debug)]
 pub enum Operation<P, T>
-where P: Debug,
-      T: Schedulable + Debug
+where
+    P: Debug,
+    T: Schedulable + Debug,
 {
     None,
-    Running {
-        payload: P,
-        tok: QToken,
-    },
+    Running { payload: P, tok: QToken },
     Completed(PosixResult<T>),
 }
 
 impl<P, T> Operation<P, T>
-where P: Debug,
-      T: Schedulable + Debug
+where
+    P: Debug,
+    T: Schedulable + Debug,
 {
     pub const fn default() -> Self {
         return Self::None;
@@ -88,7 +94,8 @@ where P: Debug,
     }
 
     pub fn get_or_schedule<F>(&mut self, func: F) -> Option<PosixResult<T>>
-        where F: FnOnce() -> (demi::QToken, P)
+    where
+        F: FnOnce() -> (demi::QToken, P),
     {
         use Operation as Op;
 
@@ -97,12 +104,14 @@ where P: Debug,
                 let (tok, payload) = func();
                 *self = Op::Running { payload, tok };
                 return None;
-            },
-            Op::Running{..} => if self.poll() {
-                                    return Some(self.get());
-                                } else {
-                                    return None;
-                                },
+            }
+            Op::Running { .. } => {
+                if self.poll() {
+                    return Some(self.get());
+                } else {
+                    return None;
+                }
+            }
             Op::Completed(_) => return Some(self.get()),
         }
     }
@@ -116,7 +125,13 @@ where P: Debug,
 
         let res = match demi::wait(tok, timeout) {
             Ok(res) => Some(Ok(res)),
-            Err(err) => if err == PosixError::WOULDBLOCK { None } else { Some(Err(err)) }
+            Err(err) => {
+                if err == PosixError::WOULDBLOCK {
+                    None
+                } else {
+                    Some(Err(err))
+                }
+            }
         };
 
         if let Some(res) = res {
@@ -135,4 +150,3 @@ where P: Debug,
         self.wait(None);
     }
 }
-

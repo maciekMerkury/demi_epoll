@@ -1,8 +1,9 @@
 use super::{
     errno::{PosixError, PosixResult},
-    helpers::{self, WrapperConversion}, raw::{self, demi_sgarray, demi_sgaseg},
+    helpers::{self, WrapperConversion},
+    raw::{self, demi_sgarray, demi_sgaseg},
 };
-use libc::{self, iovec, sockaddr_in, AF_INET, SOCK_STREAM};
+use libc::{self, AF_INET, SOCK_STREAM, iovec, sockaddr_in};
 use std::{
     mem::MaybeUninit,
     os::raw::{c_int, c_uint},
@@ -23,16 +24,14 @@ unsafe impl Send for SgArray {}
 
 impl std::convert::From<demi_sgarray> for SgArray {
     fn from(sga: demi_sgarray) -> Self {
-        return Self {
-            sga,
-        };
+        return Self { sga };
     }
 }
 
 impl SgArray {
     pub fn new(size: usize) -> Self {
         let s = Self {
-            sga: unsafe { raw::demi_sgaalloc(size) }
+            sga: unsafe { raw::demi_sgaalloc(size) },
         };
 
         assert!(s.sga.sga_numsegs > 0);
@@ -41,7 +40,10 @@ impl SgArray {
     }
 
     pub fn len(&self) -> usize {
-        return unsafe { self.segments() }.iter().map(|s| s.sgaseg_len as usize).sum();
+        return unsafe { self.segments() }
+            .iter()
+            .map(|s| s.sgaseg_len as usize)
+            .sum();
     }
 
     pub fn from_slice(src: &[u8]) -> Self {
@@ -92,10 +94,16 @@ impl SgArray {
             let ptr = seg.sgaseg_buf as *mut u8;
 
             while seg_off < len {
-                let bytes_left = len.saturating_sub(seg_off).min(src[0].iov_len.saturating_sub(src_off));
+                let bytes_left = len
+                    .saturating_sub(seg_off)
+                    .min(src[0].iov_len.saturating_sub(src_off));
 
                 unsafe {
-                    std::ptr::copy_nonoverlapping((src[0].iov_base as *const u8).add(src_off), ptr.add(seg_off), bytes_left);
+                    std::ptr::copy_nonoverlapping(
+                        (src[0].iov_base as *const u8).add(src_off),
+                        ptr.add(seg_off),
+                        bytes_left,
+                    );
                 }
 
                 seg_off += bytes_left;
@@ -125,7 +133,7 @@ pub struct SgArrayByteIter {
     /// offset into sga.segs
     seg_off: usize,
     /// offset into the segment
-    byte_off: usize
+    byte_off: usize,
 }
 
 impl SgArrayByteIter {
@@ -139,7 +147,8 @@ impl SgArrayByteIter {
 
     pub fn is_empty(&self) -> bool {
         let segs = unsafe { self.sga.segments() };
-        return self.seg_off == segs.len() - 1 && self.byte_off > segs[self.seg_off].sgaseg_len as usize;
+        return self.seg_off == segs.len() - 1
+            && self.byte_off > segs[self.seg_off].sgaseg_len as usize;
     }
 
     /// copies K bytes into dst
@@ -199,7 +208,14 @@ impl SgArrayByteIter {
                 break;
             }
 
-            let vec = unsafe { std::ptr::slice_from_raw_parts_mut(vec.iov_base as *mut MaybeUninit<u8>, vec.iov_len).as_mut().unwrap() };
+            let vec = unsafe {
+                std::ptr::slice_from_raw_parts_mut(
+                    vec.iov_base as *mut MaybeUninit<u8>,
+                    vec.iov_len,
+                )
+                .as_mut()
+                .unwrap()
+            };
 
             total_copied += self.copy_bytes(vec).unwrap();
         }
@@ -284,13 +300,21 @@ impl std::convert::TryFrom<raw::demi_qresult> for QResult {
     fn try_from(value: raw::demi_qresult) -> Result<Self, Self::Error> {
         let opcode = value.qr_opcode.try_into().unwrap();
         let val = match opcode {
-            Opcode::PUSH => Ok(Some(QResultValue::Push(unsafe{ value.qr_value.sga }.into()))),
-            Opcode::POP => Ok(Some(QResultValue::Pop(unsafe{ value.qr_value.sga }.into()))),
-            Opcode::ACCEPT => Ok(Some(QResultValue::Accept(unsafe{ value.qr_value.ares }.into()))),
+            Opcode::PUSH => Ok(Some(QResultValue::Push(
+                unsafe { value.qr_value.sga }.into(),
+            ))),
+            Opcode::POP => Ok(Some(QResultValue::Pop(
+                unsafe { value.qr_value.sga }.into(),
+            ))),
+            Opcode::ACCEPT => Ok(Some(QResultValue::Accept(
+                unsafe { value.qr_value.ares }.into(),
+            ))),
             Opcode::INVALID => panic!("invalid request to demikernel"),
             Opcode::CONNECT => Ok(None),
             Opcode::CLOSE => Ok(None),
-            Opcode::FAILED => Err(PosixError::from_errno(value.qr_ret.try_into().unwrap()).err().unwrap()),
+            Opcode::FAILED => Err(PosixError::from_errno(value.qr_ret.try_into().unwrap())
+                .err()
+                .unwrap()),
         }?;
 
         return Ok(Self {
@@ -402,7 +426,10 @@ pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<QResult> {
     return unsafe { res.assume_init() }.try_into();
 }
 
-pub fn wait_any(toks: &[QToken], timeout: Option<Duration>) -> PosixResult<(usize, PosixResult<QResult>)> {
+pub fn wait_any(
+    toks: &[QToken],
+    timeout: Option<Duration>,
+) -> PosixResult<(usize, PosixResult<QResult>)> {
     let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::uninit();
     let ts: raw::timespec;
     let ts_ptr = if let Some(d) = timeout {
@@ -428,4 +455,3 @@ pub fn wait_any(toks: &[QToken], timeout: Option<Duration>) -> PosixResult<(usiz
         unsafe { res.assume_init() }.try_into(),
     ));
 }
-

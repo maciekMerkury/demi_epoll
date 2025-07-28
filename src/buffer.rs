@@ -1,12 +1,12 @@
-use std::default::Default;
 use bitfields::bitfield;
 use libc::c_int;
+use std::default::Default;
 
 use crate::wrappers::errno::{PosixError, PosixResult};
 
 pub struct Buffer<const S: bool, T> {
     items: Vec<Entry<T>>,
-    next_free: Option<usize>
+    next_free: Option<usize>,
 }
 
 impl<const S: bool, T> Buffer<S, T> {
@@ -21,7 +21,7 @@ impl<const S: bool, T> Buffer<S, T> {
         return Self {
             items: Vec::with_capacity(cap),
             next_free: None,
-        }
+        };
     }
 
     pub fn allocate(&mut self, item: T) -> Index {
@@ -64,7 +64,6 @@ impl<const S: bool, T> Buffer<S, T> {
         };
     }
 
-
     pub fn get_mut(&mut self, idx: Index) -> Option<&mut T> {
         return match &mut self.get_entry_mut(idx)?.field {
             Field::Item(it) => Some(it),
@@ -92,14 +91,14 @@ impl<const S: bool, T> Buffer<S, T> {
 #[derive(Debug)]
 struct Entry<T> {
     generation: Generation,
-    field: Field<T>
+    field: Field<T>,
 }
 
 impl<T> Default for Entry<T> {
     fn default() -> Self {
         return Self {
             field: Field::default(),
-            generation: Generation::default()
+            generation: Generation::default(),
         };
     }
 }
@@ -136,7 +135,6 @@ impl Generation {
     const fn into_bits(self) -> u8 {
         self.0
     }
-
 }
 
 #[bitfield(u32)]
@@ -178,4 +176,3 @@ impl std::convert::Into<i32> for Index {
         return self.into_bits() as i32;
     }
 }
-
