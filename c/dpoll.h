@@ -9,11 +9,11 @@
 
 int dpoll_socket(int domain, int type, int proto);
 
-int dpoll_bind(int socket_fd, const sockaddr *addr, socklen_t addr_len);
+int dpoll_bind(int socket_fd, const struct sockaddr *addr, socklen_t addr_len);
 
 int dpoll_listen(int socket_fd, int backlog);
 
-int dpoll_accept(int socket_fd, sockaddr *addr, socklen_t *addr_len);
+int dpoll_accept(int socket_fd, struct sockaddr *addr, socklen_t *addr_len);
 
 int dpoll_close(int fd);
 
@@ -29,10 +29,18 @@ int dpoll_init(void);
 
 int dpoll_create(int flags);
 
-int dpoll_ctl(int dpollfd, int op, int fd, epoll_event *event);
+int dpoll_ctl(int dpollfd, int op, int fd, struct epoll_event *event);
 
 int dpoll_pwait(int dpollfd,
                 epoll_event *events,
                 int events_len,
                 int timeout,
                 const sigset_t *sigmask);
+
+int dpoll_setsockopt(int socket, int level, int optname, const void *optval, socklen_t optlen);
+
+int dpoll_getsockname(int socket, struct sockaddr *addr, socklen_t *len);
+
+int dpoll_sendmsg(int socket, const struct msghdr *msg, int flags);
+
+int dpoll_connect(int socket_fd, const struct sockaddr *addr, socklen_t len);

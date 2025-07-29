@@ -6,8 +6,8 @@ default:
 rust_bindings:
     bindgen c/wrapper.h -o src/wrappers/raw.rs
 
-c_header: build
-    cbindgen src/bindings/mod.rs -c cbindgen.toml -o c/dpoll.h
+update_c_header:
+    cbindgen src/bindings/mod.rs -c cbindgen.toml -o c/updated_dpoll.h
 
 build: rust_bindings
     cargo build --release
