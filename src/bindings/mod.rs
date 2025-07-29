@@ -305,6 +305,15 @@ pub unsafe extern "C" fn dpoll_sendmsg(
 }
 
 #[unsafe(no_mangle)]
+pub unsafe extern "C" fn dpoll_recvmsg(
+    socket: c_int,
+    msg: *mut libc::msghdr,
+    flags: c_int
+) -> c_int {
+    unimplemented!();
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_connect(
     socket_fd: c_int,
     addr: *const sockaddr,

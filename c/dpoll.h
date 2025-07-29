@@ -43,4 +43,6 @@ int dpoll_getsockname(int socket, struct sockaddr *addr, socklen_t *len);
 
 int dpoll_sendmsg(int socket, const struct msghdr *msg, int flags);
 
+int dpoll_recvmsg(int socket, struct msghdr *msg, int flags);
+
 int dpoll_connect(int socket_fd, const struct sockaddr *addr, socklen_t len);
