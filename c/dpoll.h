@@ -21,9 +21,9 @@ ssize_t dpoll_write(int socket_fd, const void *buf, size_t len);
 
 ssize_t dpoll_read(int socket_fd, void *buf, size_t len);
 
-ssize_t dpoll_writev(int socket_fd, const iovec *vecs, int iovec_count);
+ssize_t dpoll_writev(int socket_fd, const struct iovec *vecs, int iovec_count);
 
-ssize_t dpoll_readv(int socket_fd, iovec *vecs, int iovec_count);
+ssize_t dpoll_readv(int socket_fd, struct iovec *vecs, int iovec_count);
 
 int dpoll_init(void);
 
@@ -32,7 +32,7 @@ int dpoll_create(int flags);
 int dpoll_ctl(int dpollfd, int op, int fd, struct epoll_event *event);
 
 int dpoll_pwait(int dpollfd,
-                epoll_event *events,
+                struct epoll_event *events,
                 int events_len,
                 int timeout,
                 const sigset_t *sigmask);
