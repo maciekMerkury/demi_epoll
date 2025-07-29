@@ -39,7 +39,7 @@ impl SocketData {
 pub struct Socket {
     pub soc: demi::SocketQd,
     /// to be used with getsockname
-    addr: Option<libc::sockaddr_in>,
+    pub addr: Option<libc::sockaddr_in>,
 
     data: SocketData,
 }

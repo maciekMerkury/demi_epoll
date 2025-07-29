@@ -260,3 +260,56 @@ pub unsafe extern "C" fn dpoll_pwait(
         Err(err) => errno(err)
     };
 }
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dpoll_setsockopt(
+    socket: c_int,
+    level: c_int,
+    optname: c_int,
+    optval: *const c_void,
+    optlen: socklen_t
+) -> c_int {
+    let idx: buf::Index = socket.into();
+    return if idx.is_dpoll() {
+        0
+    } else {
+        unsafe {
+            libc::setsockopt(socket, level, optname, optval, optlen)
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dpoll_getsockname(
+    socket: c_int,
+    addr: *mut sockaddr,
+    len: *mut socklen_t,
+) -> c_int {
+    let idx: buf::Index = socket.into();
+    let soc_addr = SOCKETS.lock().unwrap().get_mut().get(idx).unwrap().addr.unwrap();
+    unsafe {
+        (addr as *mut sockaddr_in).write(soc_addr);
+        len.write(mem::size_of::<libc::sockaddr_in>() as u32);
+    }
+
+    return 0;
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dpoll_sendmsg(
+    socket: c_int,
+    msg: *const libc::msghdr,
+    flags: c_int
+) -> c_int {
+    unimplemented!();
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn dpoll_connect(
+    socket_fd: c_int,
+    addr: *const sockaddr,
+    len: socklen_t
+) -> c_int {
+    unimplemented!();
+}
+
