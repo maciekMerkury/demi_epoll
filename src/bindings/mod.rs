@@ -1,10 +1,11 @@
+mod utils;
+use utils::{errno, cast_sockaddr, result_as_errno};
+
 use crate::{
-    buffer::{self as buf, Buffer},
-    socket::Socket,
-    wrappers::{
+    buffer::{self as buf, Buffer}, dpoll::{Dpoll, self}, socket::Socket, wrappers::{
         demi,
         errno::{PosixError, PosixResult},
-    },
+    }
 };
 use core::slice;
 use libc::{
@@ -15,7 +16,7 @@ use std::{
     cell::RefCell,
     mem::{self, MaybeUninit},
     os::raw::{c_int, c_void},
-    sync::Mutex,
+    sync::Mutex, time::Duration,
 };
 
 type SharedBuffer<const S: bool, T> = Mutex<RefCell<Buffer<S, T>>>;
@@ -25,43 +26,10 @@ const fn new_buffer<const S: bool, T>() -> SharedBuffer<S, T> {
     return Mutex::new(RefCell::new(Buffer::new()));
 }
 
-fn cast_sockaddr<'a>(
-    addr: *mut sockaddr,
-    len: *mut socklen_t,
-) -> Option<&'a mut MaybeUninit<sockaddr_in>> {
-    assert_eq!(addr.is_null(), len.is_null());
-    if addr.is_null() {
-        return None;
-    }
-
-    assert!(*unsafe { len.as_ref().unwrap() } as usize >= mem::size_of::<libc::sockaddr_in>());
-
-    return unsafe { (addr as *mut sockaddr_in).as_uninit_mut() };
-}
-
-fn errno(err: PosixError) -> c_int {
-    unsafe {
-        *libc::__errno_location() = err.into();
-    }
-    return -1;
-}
-
-/// returns 0 or -1, sets errno on error
-fn result_as_errno(result: PosixResult<()>) -> c_int {
-    let error_code: c_int = match result {
-        Ok(_) => return 0,
-        Err(e) => e.into(),
-    };
-
-    unsafe {
-        *libc::__errno_location() = error_code;
-    }
-
-    return -1;
-}
-
 static SOCKETS: SharedBuffer<true, Socket> = new_buffer();
+static DPOLLS: SharedBuffer<false, Dpoll> = new_buffer();
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_socket(domain: c_int, r#type: c_int, proto: c_int) -> c_int {
     assert!(domain == AF_INET);
     assert!(r#type == SOCK_STREAM);
@@ -73,6 +41,7 @@ pub unsafe extern "C" fn dpoll_socket(domain: c_int, r#type: c_int, proto: c_int
     return idx.into();
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_bind(
     socket_fd: c_int,
     addr: *const sockaddr,
@@ -82,8 +51,6 @@ pub unsafe extern "C" fn dpoll_bind(
     let addr = unsafe { (addr as *const sockaddr_in).as_ref() }.unwrap();
 
     let idx = buf::Index::from(socket_fd);
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let res = SOCKETS
         .lock()
@@ -96,10 +63,9 @@ pub unsafe extern "C" fn dpoll_bind(
     return result_as_errno(res);
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_listen(socket_fd: c_int, backlog: c_int) -> c_int {
     let idx = buf::Index::from(socket_fd);
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let res = SOCKETS
         .lock()
@@ -112,6 +78,7 @@ pub unsafe extern "C" fn dpoll_listen(socket_fd: c_int, backlog: c_int) -> c_int
     return result_as_errno(res);
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_accept(
     socket_fd: c_int,
     addr: *mut sockaddr,
@@ -119,8 +86,6 @@ pub unsafe extern "C" fn dpoll_accept(
 ) -> c_int {
     let addr = cast_sockaddr(addr, addr_len);
     let idx = buf::Index::from(socket_fd);
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let mut lock = SOCKETS.lock().unwrap();
     let sockets = lock.get_mut();
@@ -133,6 +98,7 @@ pub unsafe extern "C" fn dpoll_accept(
     return sockets.allocate(soc).into();
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
     let idx: buf::Index = fd.into();
 
@@ -141,7 +107,8 @@ pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
             SOCKETS.lock().unwrap().get_mut().free(idx);
             0
         } else {
-            todo!();
+            DPOLLS.lock().unwrap().get_mut().free(idx);
+            0
         }
     } else {
         unsafe { libc::close(fd) }
@@ -150,10 +117,9 @@ pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
     return res;
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_write(socket_fd: c_int, buf: *const c_void, len: size_t) -> ssize_t {
     let idx: buf::Index = socket_fd.into();
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let buf = unsafe { std::ptr::slice_from_raw_parts(buf as *const u8, len).as_ref() }.unwrap();
     let res = SOCKETS
@@ -169,10 +135,9 @@ pub unsafe extern "C" fn dpoll_write(socket_fd: c_int, buf: *const c_void, len: 
     };
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_read(socket_fd: c_int, buf: *mut c_void, len: size_t) -> ssize_t {
     let idx: buf::Index = socket_fd.into();
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let buf =
         unsafe { std::ptr::slice_from_raw_parts_mut(buf as *mut MaybeUninit<u8>, len).as_mut() }
@@ -190,14 +155,13 @@ pub unsafe extern "C" fn dpoll_read(socket_fd: c_int, buf: *mut c_void, len: siz
     };
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_writev(
     socket_fd: c_int,
     vecs: *const iovec,
     iovec_count: c_int,
 ) -> ssize_t {
     let idx: buf::Index = socket_fd.into();
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let vecs =
         unsafe { std::ptr::slice_from_raw_parts(vecs, iovec_count.try_into().unwrap()).as_ref() }
@@ -217,14 +181,13 @@ pub unsafe extern "C" fn dpoll_writev(
     };
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_readv(
     socket_fd: c_int,
     vecs: *mut iovec,
     iovec_count: c_int,
 ) -> ssize_t {
     let idx: buf::Index = socket_fd.into();
-    assert!(idx.is_dpoll());
-    assert!(idx.is_socket());
 
     let vecs = unsafe {
         std::ptr::slice_from_raw_parts_mut(vecs, iovec_count.try_into().unwrap()).as_mut()
@@ -245,29 +208,55 @@ pub unsafe extern "C" fn dpoll_readv(
     };
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_init() -> c_int {
     return unsafe { result_as_errno(demi::meta_init()) };
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_create(flags: c_int) -> c_int {
-    todo!();
+    let pol = match Dpoll::create(flags) {
+        Ok(s) => s,
+        Err(e) => return errno(e),
+    };
+
+    let idx = DPOLLS.lock().unwrap().get_mut().allocate(pol);
+    return idx.into();
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_ctl(
     dpollfd: c_int,
     op: c_int,
     fd: c_int,
     event: *mut epoll_event,
 ) -> c_int {
-    todo!();
+    let pol: buf::Index = dpollfd.into();
+    let soc: buf::Index = fd.into();
+    let qd = SOCKETS.lock().unwrap().borrow().get(soc).unwrap().soc.qd;
+
+    let op = dpoll::Operation::new(soc, qd, op, unsafe {event.as_ref()}).unwrap();
+    let res = DPOLLS.lock().unwrap().get_mut().get_mut(pol).unwrap().ctl(op);
+    return result_as_errno(res);
 }
 
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_pwait(
     dpollfd: c_int,
     events: *mut epoll_event,
     events_len: c_int,
     timeout: c_int,
-    sigmask: *mut sigset_t,
+    sigmask: *const sigset_t,
 ) -> c_int {
-    todo!();
+    let pol: buf::Index = dpollfd.into();
+
+    let evs = unsafe { std::ptr::slice_from_raw_parts_mut(events as *mut MaybeUninit<epoll_event>, events_len.try_into().unwrap()).as_mut() }.unwrap();
+    let timeout = if timeout.is_negative() { None } else { Some(Duration::from_millis(timeout as u64)) };
+    let sigmask = unsafe { sigmask.as_ref() };
+
+    let res = DPOLLS.lock().unwrap().get_mut().get_mut(pol).unwrap().pwait(SOCKETS.lock().unwrap().get_mut(), evs, timeout, sigmask);
+    return match res {
+        Ok(count) => count.try_into().unwrap(),
+        Err(err) => errno(err)
+    };
 }

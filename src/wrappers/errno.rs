@@ -270,155 +270,25 @@ pub enum PosixError {
 }
 
 impl PosixError {
+    pub fn from_errno() -> PosixResult<()>{
+        let err = unsafe { libc::__errno_location().read() };
+        return Self::from_error_code(err);
+    }
+
     /// returns Ok(()) if errno == 0
     ///
     /// panics if errno does not map to anything
     #[allow(unreachable_code)]
-    pub fn from_errno(errno: c_int) -> Result<(), Self> {
+    pub fn from_error_code(code: c_int) -> PosixResult<()> {
         use PosixError::*;
 
-        if errno == 0 {
+        if code == 0 {
             return Ok(());
-        } else if errno <= 133 {
-            let var: PosixError = unsafe { std::mem::transmute(errno) };
+        } else if code <= 133 {
+            let var: PosixError = unsafe { std::mem::transmute(code) };
             return Err(var);
         } else {
-            panic!("invalid errno: {}\n", errno);
-        };
-        return match errno {
-            0 => Ok(()),
-            1 => Err(PERM),
-            2 => Err(NOENT),
-            3 => Err(SRCH),
-            4 => Err(INTR),
-            5 => Err(IO),
-            6 => Err(NXIO),
-            7 => Err(TooBIG),
-            8 => Err(NOEXEC),
-            9 => Err(BADF),
-            10 => Err(CHILD),
-            12 => Err(NOMEM),
-            13 => Err(ACCES),
-            14 => Err(FAULT),
-            15 => Err(NOTBLK),
-            16 => Err(BUSY),
-            17 => Err(EXIST),
-            18 => Err(XDEV),
-            19 => Err(NODEV),
-            20 => Err(NOTDIR),
-            21 => Err(ISDIR),
-            22 => Err(INVAL),
-            23 => Err(NFILE),
-            24 => Err(MFILE),
-            25 => Err(NOTTY),
-            26 => Err(TXTBSY),
-            27 => Err(FBIG),
-            28 => Err(NOSPC),
-            29 => Err(SPIPE),
-            30 => Err(ROFS),
-            31 => Err(MLINK),
-            32 => Err(PIPE),
-            33 => Err(DOM),
-            34 => Err(RANGE),
-            36 => Err(NAMETOOLONG),
-            37 => Err(NOLCK),
-            38 => Err(NOSYS),
-            39 => Err(NOTEMPTY),
-            40 => Err(LOOP),
-            11 => Err(WOULDBLOCK),
-            42 => Err(NOMSG),
-            43 => Err(IDRM),
-            44 => Err(CHRNG),
-            45 => Err(L2NSYNC),
-            46 => Err(L3HLT),
-            47 => Err(L3RST),
-            48 => Err(LNRNG),
-            49 => Err(UNATCH),
-            50 => Err(NOCSI),
-            51 => Err(L2HLT),
-            52 => Err(BADE),
-            53 => Err(BADR),
-            54 => Err(XFULL),
-            55 => Err(NOANO),
-            56 => Err(BADRQC),
-            57 => Err(BADSLT),
-            35 => Err(DEADLOCK),
-            59 => Err(BFONT),
-            60 => Err(NOSTR),
-            61 => Err(NODATA),
-            62 => Err(TIME),
-            63 => Err(NOSR),
-            64 => Err(NONET),
-            65 => Err(NOPKG),
-            66 => Err(REMOTE),
-            67 => Err(NOLINK),
-            68 => Err(ADV),
-            69 => Err(SRMNT),
-            70 => Err(COMM),
-            71 => Err(PROTO),
-            72 => Err(MULTIHOP),
-            73 => Err(DOTDOT),
-            74 => Err(BADMSG),
-            75 => Err(OVERFLOW),
-            76 => Err(NOTUNIQ),
-            77 => Err(BADFD),
-            78 => Err(REMCHG),
-            79 => Err(LIBACC),
-            80 => Err(LIBBAD),
-            81 => Err(LIBSCN),
-            82 => Err(LIBMAX),
-            83 => Err(LIBEXEC),
-            84 => Err(ILSEQ),
-            85 => Err(RESTART),
-            86 => Err(STRPIPE),
-            87 => Err(USERS),
-            88 => Err(NOTSOCK),
-            89 => Err(DESTADDRREQ),
-            90 => Err(MSGSIZE),
-            91 => Err(PROTOTYPE),
-            92 => Err(NOPROTOOPT),
-            93 => Err(PROTONOSUPPORT),
-            94 => Err(SOCKTNOSUPPORT),
-            95 => Err(OPNOTSUPP),
-            96 => Err(PFNOSUPPORT),
-            97 => Err(AFNOSUPPORT),
-            98 => Err(ADDRINUSE),
-            99 => Err(ADDRNOTAVAIL),
-            100 => Err(NETDOWN),
-            101 => Err(NETUNREACH),
-            102 => Err(NETRESET),
-            103 => Err(CONNABORTED),
-            104 => Err(CONNRESET),
-            105 => Err(NOBUFS),
-            106 => Err(ISCONN),
-            107 => Err(NOTCONN),
-            108 => Err(SHUTDOWN),
-            109 => Err(TOOMANYREFS),
-            110 => Err(TIMEDOUT),
-            111 => Err(CONNREFUSED),
-            112 => Err(HOSTDOWN),
-            113 => Err(HOSTUNREACH),
-            114 => Err(ALREADY),
-            115 => Err(INPROGRESS),
-            116 => Err(STALE),
-            117 => Err(UCLEAN),
-            118 => Err(NOTNAM),
-            119 => Err(NAVAIL),
-            120 => Err(ISNAM),
-            121 => Err(REMOTEIO),
-            122 => Err(DQUOT),
-            123 => Err(NOMEDIUM),
-            124 => Err(MEDIUMTYPE),
-            125 => Err(CANCELED),
-            126 => Err(NOKEY),
-            127 => Err(KEYEXPIRED),
-            128 => Err(KEYREVOKED),
-            129 => Err(KEYREJECTED),
-            130 => Err(OWNERDEAD),
-            131 => Err(NOTRECOVERABLE),
-            132 => Err(RFKILL),
-            133 => Err(HWPOISON),
-            _ => panic!("invalid errno: {}", errno),
+            panic!("invalid errno: {}\n", code);
         };
     }
 }

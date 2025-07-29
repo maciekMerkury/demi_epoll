@@ -4,16 +4,22 @@ use std::{
     time::Duration,
 };
 
-use crate::wrappers::{
+use crate::{socket::Socket, wrappers::{
     demi::{self, QResult, QToken},
     errno::{PosixError, PosixResult},
-};
+}};
 
 pub trait Schedulable: Sized {
+    type Payload: Debug;
+
     fn from_qresult(result: QResult) -> Self;
+
+    fn schedule(soc: &mut demi::SocketQd, payload: &mut Self::Payload) -> demi::QToken;
 }
 
 impl Schedulable for demi::AcceptResult {
+    type Payload = ();
+
     fn from_qresult(result: QResult) -> Self {
         let val = result.value.unwrap();
         if let demi::QResultValue::Accept(accept_res) = val {
@@ -22,15 +28,27 @@ impl Schedulable for demi::AcceptResult {
             panic!("cannot create AcceptResult from {:?}", val);
         }
     }
+
+    fn schedule(soc: &mut demi::SocketQd, _: &mut Self::Payload) -> demi::QToken {
+        return soc.accept().unwrap();
+    }
 }
 
 impl Schedulable for () {
+    type Payload = demi::SgArray; 
+
     fn from_qresult(val: QResult) -> Self {
-        assert!(matches!(val.value.unwrap(), demi::QResultValue::Push(_)));
+        assert!(matches!(val.value.unwrap(), demi::QResultValue::Push));
+    }
+
+    fn schedule(soc: &mut demi::SocketQd, sga: &mut Self::Payload) -> demi::QToken {
+        return soc.push(&sga).unwrap();
     }
 }
 
 impl Schedulable for demi::SgArrayByteIter {
+    type Payload = ();
+
     fn from_qresult(result: QResult) -> Self {
         let val = result.value.unwrap();
         if let demi::QResultValue::Pop(buf) = val {
@@ -39,37 +57,40 @@ impl Schedulable for demi::SgArrayByteIter {
             panic!("cannot create SgArrayByteIter from {:?}", val);
         }
     }
+    
+    fn schedule(soc: &mut demi::SocketQd, _: &mut Self::Payload) -> demi::QToken {
+        return soc.pop().unwrap();
+    }
 }
 
 /// takes ownership of payload P, which will be dropped in transition to Completed
 #[derive(Debug)]
-pub enum Operation<P, T>
+pub enum Operation<T>
 where
-    P: Debug,
     T: Schedulable + Debug,
 {
     None,
-    Running { payload: P, tok: QToken },
+    Running { payload: T::Payload, tok: QToken },
     Completed(PosixResult<T>),
 }
 
-impl<P, T> Operation<P, T>
+impl<T> Operation<T>
 where
-    P: Debug,
     T: Schedulable + Debug,
 {
     pub const fn default() -> Self {
         return Self::None;
     }
 
-    pub fn new(tok: demi::QToken, payload: P) -> Self {
-        return Self::Running { payload, tok };
-    }
-
-    pub fn schedule(&mut self, tok: demi::QToken, payload: P) {
+    pub fn start(&mut self, tok: demi::QToken, payload: T::Payload) {
         assert!(matches!(self, Operation::None));
 
-        *self = Self::new(tok, payload);
+        *self = Self::Running { payload, tok };
+    }
+
+    pub fn complete(&mut self, result: PosixResult<T>) {
+        assert!(self.is_running());
+        *self = Self::Completed(result);
     }
 
     pub fn get(&mut self) -> PosixResult<T> {
@@ -86,23 +107,47 @@ where
         };
     }
 
-    pub fn is_finished(&self) -> bool {
-        return matches!(self, Self::Completed(_));
-    }
-    pub fn is_running(&self) -> bool {
-        return matches!(self, Self::Running { payload, tok });
-    }
-
-    pub fn get_or_schedule<F>(&mut self, func: F) -> Option<PosixResult<T>>
+    pub fn get_mut_or_schedule<'a, F>(&'a mut self, func: F) -> Option<PosixResult<&'a mut T>>
     where
-        F: FnOnce() -> (demi::QToken, P),
+        F: FnOnce() -> (&'a mut demi::SocketQd, T::Payload),
     {
         use Operation as Op;
 
         match self {
             Op::None => {
-                let (tok, payload) = func();
-                *self = Op::Running { payload, tok };
+                let (soc, mut payload) = func();
+                let tok = T::schedule(soc, &mut payload);
+                *self = Op::Running {
+                    payload,
+                    tok,
+                };
+                return None;
+            }
+            Op::Running { .. } => {
+                if self.poll() {
+                    return Some(self.get_mut());
+                } else {
+                    return None;
+                }
+            }
+            Op::Completed(_) => return Some(self.get_mut()),
+        }
+    }
+
+    pub fn get_or_schedule<'a, F>(&'a mut self, func: F) -> Option<PosixResult<T>>
+    where
+        F: FnOnce() -> (&'a mut demi::SocketQd, T::Payload),
+    {
+        use Operation as Op;
+
+        match self {
+            Op::None => {
+                let (soc, mut payload) = func();
+                let tok = T::schedule(soc, &mut payload);
+                *self = Op::Running {
+                    payload,
+                    tok,
+                };
                 return None;
             }
             Op::Running { .. } => {
@@ -114,6 +159,25 @@ where
             }
             Op::Completed(_) => return Some(self.get()),
         }
+    }
+
+    pub fn is_finished(&self) -> bool {
+        return matches!(self, Self::Completed(_));
+    }
+
+    pub fn is_running(&self) -> bool {
+        return matches!(self, Self::Running { payload, tok });
+    }
+
+    #[inline]
+    pub fn poll(&mut self) -> bool {
+        self.wait(Some(Duration::ZERO));
+        return self.is_finished();
+    }
+
+    #[inline]
+    pub fn block(&mut self) {
+        self.wait(None);
     }
 
     fn wait(&mut self, timeout: Option<Duration>) {
@@ -139,14 +203,4 @@ where
         }
     }
 
-    #[inline]
-    pub fn poll(&mut self) -> bool {
-        self.wait(Some(Duration::ZERO));
-        return self.is_finished();
-    }
-
-    #[inline]
-    pub fn block(&mut self) {
-        self.wait(None);
-    }
 }

@@ -58,6 +58,8 @@ impl<const S: bool, T> Buffer<S, T> {
     }
 
     pub fn get(&self, idx: Index) -> Option<&T> {
+        assert!(idx.is_dpoll());
+        assert!(idx.is_socket() == S);
         return match &self.get_entry(idx)?.field {
             Field::Item(it) => Some(it),
             Field::Free(_) => None,
