@@ -42,7 +42,7 @@ impl SgArray {
     pub fn len(&self) -> usize {
         return unsafe { self.segments() }
             .iter()
-            .map(|s| s.sgaseg_len as usize)
+            .map(|s| s.data_len_bytes as usize)
             .sum();
     }
 
@@ -61,7 +61,7 @@ impl SgArray {
 
     unsafe fn segments(&self) -> &[raw::demi_sgaseg] {
         return unsafe {
-            std::slice::from_raw_parts(self.sga.sga_segs.as_ptr(), self.sga.sga_numsegs as usize)
+            std::slice::from_raw_parts(self.sga.segments.as_ptr(), self.sga.sga_numsegs as usize)
         };
     }
 
@@ -72,8 +72,8 @@ impl SgArray {
         let mut offset = 0;
 
         for seg in unsafe { self.segments() } {
-            let len = seg.sgaseg_len as usize;
-            let ptr = seg.sgaseg_buf as *mut u8;
+            let len = seg.data_len_bytes as usize;
+            let ptr = seg.data_buf_ptr as *mut u8;
 
             unsafe {
                 std::ptr::copy_nonoverlapping(src.as_ptr().add(offset), ptr, len);
@@ -90,8 +90,8 @@ impl SgArray {
         let mut src_off = 0;
         for seg in unsafe { self.segments() } {
             let mut seg_off = 0;
-            let len = seg.sgaseg_len as usize;
-            let ptr = seg.sgaseg_buf as *mut u8;
+            let len = seg.data_len_bytes as usize;
+            let ptr = seg.data_buf_ptr as *mut u8;
 
             while seg_off < len {
                 let bytes_left = len
@@ -148,7 +148,7 @@ impl SgArrayByteIter {
     pub fn is_empty(&self) -> bool {
         let segs = unsafe { self.sga.segments() };
         return self.seg_off == segs.len() - 1
-            && self.byte_off > segs[self.seg_off].sgaseg_len as usize;
+            && self.byte_off > segs[self.seg_off].data_len_bytes as usize;
     }
 
     /// copies K bytes into dst
@@ -165,7 +165,7 @@ impl SgArrayByteIter {
         while total_copied < max_copied && self.seg_off < segs.len() {
             let seg = &segs[self.seg_off];
 
-            let bytes_left = (seg.sgaseg_len as usize).saturating_sub(self.byte_off);
+            let bytes_left = (seg.data_len_bytes as usize).saturating_sub(self.byte_off);
 
             // no more data to copy
             if bytes_left == 0 {
@@ -177,7 +177,7 @@ impl SgArrayByteIter {
             let copy_len = bytes_left.min(dst.len());
 
             unsafe {
-                let src = seg.sgaseg_buf.add(self.byte_off) as *const u8;
+                let src = seg.data_buf_ptr.add(self.byte_off) as *const u8;
                 let dst = dst.as_mut_ptr() as *mut u8;
 
                 std::ptr::copy_nonoverlapping(src, dst, copy_len);
@@ -187,7 +187,7 @@ impl SgArrayByteIter {
             total_copied += copy_len;
             dst = &mut dst[copy_len..];
 
-            if self.byte_off >= seg.sgaseg_len as usize {
+            if self.byte_off >= seg.data_len_bytes as usize {
                 self.seg_off += 1;
                 self.byte_off = 0;
             }

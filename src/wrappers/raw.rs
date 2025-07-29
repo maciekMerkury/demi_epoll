@@ -555,7 +555,7 @@ pub const IN_CLASSC_HOST: u32 = 255;
 pub const IN_LOOPBACKNET: u32 = 127;
 pub const INET_ADDRSTRLEN: u32 = 16;
 pub const INET6_ADDRSTRLEN: u32 = 46;
-pub const DEMI_SGARRAY_MAXSIZE: u32 = 1;
+pub const DEMI_SGARRAY_MAXSIZE: u32 = 20;
 pub const _TIME_H: u32 = 1;
 pub const _BITS_TIME_H: u32 = 1;
 pub const CLOCK_REALTIME: u32 = 0;
@@ -1846,39 +1846,39 @@ pub type demi_qtoken_t = u64;
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct demi_sgaseg {
-    pub sgaseg_buf: *mut ::std::os::raw::c_void,
-    pub sgaseg_len: u32,
+    pub sgaseg_md: *mut ::std::os::raw::c_void,
+    pub data_buf_ptr: *mut ::std::os::raw::c_void,
+    pub data_len_bytes: u32,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of demi_sgaseg"][::std::mem::size_of::<demi_sgaseg>() - 12usize];
+    ["Size of demi_sgaseg"][::std::mem::size_of::<demi_sgaseg>() - 20usize];
     ["Alignment of demi_sgaseg"][::std::mem::align_of::<demi_sgaseg>() - 1usize];
-    ["Offset of field: demi_sgaseg::sgaseg_buf"]
-        [::std::mem::offset_of!(demi_sgaseg, sgaseg_buf) - 0usize];
-    ["Offset of field: demi_sgaseg::sgaseg_len"]
-        [::std::mem::offset_of!(demi_sgaseg, sgaseg_len) - 8usize];
+    ["Offset of field: demi_sgaseg::sgaseg_md"]
+        [::std::mem::offset_of!(demi_sgaseg, sgaseg_md) - 0usize];
+    ["Offset of field: demi_sgaseg::data_buf_ptr"]
+        [::std::mem::offset_of!(demi_sgaseg, data_buf_ptr) - 8usize];
+    ["Offset of field: demi_sgaseg::data_len_bytes"]
+        [::std::mem::offset_of!(demi_sgaseg, data_len_bytes) - 16usize];
 };
 pub type demi_sgaseg_t = demi_sgaseg;
 #[repr(C, packed)]
 #[derive(Debug, Copy, Clone)]
 pub struct demi_sgarray {
-    pub sga_buf: *mut ::std::os::raw::c_void,
     pub sga_numsegs: u32,
-    pub sga_segs: [demi_sgaseg_t; 1usize],
+    pub segments: [demi_sgaseg_t; 20usize],
     pub sga_addr: sockaddr_in,
 }
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of demi_sgarray"][::std::mem::size_of::<demi_sgarray>() - 40usize];
+    ["Size of demi_sgarray"][::std::mem::size_of::<demi_sgarray>() - 420usize];
     ["Alignment of demi_sgarray"][::std::mem::align_of::<demi_sgarray>() - 1usize];
-    ["Offset of field: demi_sgarray::sga_buf"]
-        [::std::mem::offset_of!(demi_sgarray, sga_buf) - 0usize];
     ["Offset of field: demi_sgarray::sga_numsegs"]
-        [::std::mem::offset_of!(demi_sgarray, sga_numsegs) - 8usize];
-    ["Offset of field: demi_sgarray::sga_segs"]
-        [::std::mem::offset_of!(demi_sgarray, sga_segs) - 12usize];
+        [::std::mem::offset_of!(demi_sgarray, sga_numsegs) - 0usize];
+    ["Offset of field: demi_sgarray::segments"]
+        [::std::mem::offset_of!(demi_sgarray, segments) - 4usize];
     ["Offset of field: demi_sgarray::sga_addr"]
-        [::std::mem::offset_of!(demi_sgarray, sga_addr) - 24usize];
+        [::std::mem::offset_of!(demi_sgarray, sga_addr) - 404usize];
 };
 pub type demi_sgarray_t = demi_sgarray;
 pub const demi_opcode_DEMI_OPC_INVALID: demi_opcode = 0;
@@ -1924,7 +1924,7 @@ pub union demi_qresult__bindgen_ty_1 {
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
     ["Size of demi_qresult__bindgen_ty_1"]
-        [::std::mem::size_of::<demi_qresult__bindgen_ty_1>() - 40usize];
+        [::std::mem::size_of::<demi_qresult__bindgen_ty_1>() - 420usize];
     ["Alignment of demi_qresult__bindgen_ty_1"]
         [::std::mem::align_of::<demi_qresult__bindgen_ty_1>() - 1usize];
     ["Offset of field: demi_qresult__bindgen_ty_1::sga"]
@@ -1934,7 +1934,7 @@ const _: () = {
 };
 #[allow(clippy::unnecessary_operation, clippy::identity_op)]
 const _: () = {
-    ["Size of demi_qresult"][::std::mem::size_of::<demi_qresult>() - 64usize];
+    ["Size of demi_qresult"][::std::mem::size_of::<demi_qresult>() - 444usize];
     ["Alignment of demi_qresult"][::std::mem::align_of::<demi_qresult>() - 1usize];
     ["Offset of field: demi_qresult::qr_opcode"]
         [::std::mem::offset_of!(demi_qresult, qr_opcode) - 0usize];
@@ -1958,14 +1958,14 @@ pub type demi_log_level = ::std::os::raw::c_uint;
 pub use self::demi_log_level as demi_log_level_t;
 pub type demi_log_callback_t = ::std::option::Option<
     unsafe extern "C" fn(
-        arg1: demi_log_level_t,
-        arg2: *const ::std::os::raw::c_char,
-        arg3: u32,
-        arg4: *const ::std::os::raw::c_char,
-        arg5: u32,
-        arg6: u32,
-        arg7: *const ::std::os::raw::c_char,
-        arg8: u32,
+        log_level: demi_log_level_t,
+        module_name: *const ::std::os::raw::c_char,
+        module_name_len_bytes: u32,
+        file_name: *const ::std::os::raw::c_char,
+        file_name_len_bytes: u32,
+        line_number: u32,
+        message: *const ::std::os::raw::c_char,
+        message_len_bytes: u32,
     ),
 >;
 #[repr(C, packed)]
