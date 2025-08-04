@@ -34,7 +34,7 @@ impl<const S: bool, T> Buffer<S, T> {
             Index::from_parts(i, self.items[i].generation, S)
         } else {
             self.items.push(Entry::default());
-            Index::from_parts(self.items.len(), Generation::ZERO, S)
+            Index::from_parts(self.items.len() - 1, Generation::ZERO, S)
         };
 
         self.get_entry_mut(idx).unwrap().field = Field::Item(item);
