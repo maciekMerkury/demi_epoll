@@ -4,15 +4,16 @@ use crate::buffer::Index;
 
 use super::item::Item;
 
+#[derive(Debug)]
 pub struct ReadyList {
-    list: LinkedList<(Index, u64)>
+    list: LinkedList<(Index, u64)>,
 }
 
 impl ReadyList {
     pub fn new() -> Self {
         return Self {
             list: LinkedList::new(),
-        }
+        };
     }
 
     pub fn push(&mut self, item: &mut Item) {
@@ -39,13 +40,16 @@ impl ReadyList {
     pub fn append(&mut self, mut other: Self) {
         self.list.append(&mut other.list);
     }
-    
+
     pub fn drain<F>(&mut self, max: usize, mut func: F) -> usize
-        where F: FnMut(usize, Index, u64),
+    where
+        F: FnMut(usize, Index, u64),
     {
         let mut idx = 0;
 
-        while let Some(curr) = self.list.pop_front() && idx < max {
+        while let Some(curr) = self.list.pop_front()
+            && idx < max
+        {
             func(idx, curr.0, curr.1);
             idx += 1;
         }
@@ -57,4 +61,3 @@ impl ReadyList {
         return self.list.is_empty();
     }
 }
-

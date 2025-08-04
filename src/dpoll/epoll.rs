@@ -1,6 +1,7 @@
 use std::{mem::MaybeUninit, time::Duration};
 
 use libc::{c_int, epoll_event};
+use log::trace;
 
 use crate::wrappers::errno::{PosixError, PosixResult};
 
@@ -9,25 +10,25 @@ use super::operation::Operation;
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct Epoll {
-    fd: i32
+    fd: i32,
 }
 
 impl Drop for Epoll {
     fn drop(&mut self) {
+        trace!("dropping {}", self.fd);
         unsafe { libc::close(self.fd) };
     }
 }
 
 impl Epoll {
     pub fn create(flags: i32) -> PosixResult<Self> {
-        let fd = unsafe {
-            libc::epoll_create1(flags)
-        };
+        let fd = unsafe { libc::epoll_create1(flags) };
 
         if fd.is_negative() {
             return PosixError::from_errno().map(|_| unreachable!());
         }
 
+        trace!("new epoll: {fd}");
         return Ok(Self { fd });
     }
 
@@ -37,21 +38,36 @@ impl Epoll {
             Some(r) => r,
             None => std::ptr::null_mut(),
         };
+        trace!("epoll: {}, op: {op}, fd: {fd}, ptr: {ptr:?}", self.fd);
         let res = unsafe { libc::epoll_ctl(self.fd, op, fd, ptr) };
 
-        return PosixError::from_errno();
+        return if res.is_negative() {
+            PosixError::from_errno()
+        } else {
+            Ok(())
+        };
     }
 
-    pub fn wait(&mut self, evs: &mut [MaybeUninit<epoll_event>], timeout: Option<Duration>) -> PosixResult<usize> {
-
+    pub fn wait(
+        &mut self,
+        evs: &mut [MaybeUninit<epoll_event>],
+        timeout: Option<Duration>,
+    ) -> PosixResult<usize> {
         let timeout: i32 = timeout.map_or(-1, |d| d.as_millis().try_into().unwrap());
-        let res = unsafe { libc::epoll_wait(self.fd, evs.as_mut_ptr() as *mut epoll_event, evs.len().try_into().unwrap(), timeout) };
+        trace!("waiting for {timeout}");
+        let res = unsafe {
+            libc::epoll_wait(
+                self.fd,
+                evs.as_mut_ptr() as *mut epoll_event,
+                evs.len().try_into().unwrap(),
+                timeout,
+            )
+        };
 
         return if (res.is_negative()) {
             PosixError::from_errno().map(|_| unreachable!())
         } else {
             Ok(res.try_into().unwrap())
-        }
+        };
     }
 }
-

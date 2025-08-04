@@ -1,6 +1,7 @@
-use std::{mem::{self, MaybeUninit}};
+use std::mem::{self, MaybeUninit};
 
 use libc::{c_int, sockaddr, sockaddr_in, socklen_t};
+use log::trace;
 
 use crate::wrappers::errno::{PosixError, PosixResult};
 
@@ -27,6 +28,7 @@ pub fn errno(err: PosixError) -> c_int {
 
 /// returns 0 or -1, sets errno on error
 pub fn result_as_errno(result: PosixResult<()>) -> c_int {
+    trace!("result: {:?}", result);
     let error_code: c_int = match result {
         Ok(_) => return 0,
         Err(e) => e.into(),
@@ -38,4 +40,3 @@ pub fn result_as_errno(result: PosixResult<()>) -> c_int {
 
     return -1;
 }
-

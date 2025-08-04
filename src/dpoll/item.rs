@@ -2,6 +2,7 @@ use crate::{buffer::Index, wrappers::demi};
 
 use super::Event;
 
+#[derive(Debug)]
 pub struct Item {
     pub evs: Event,
     pub idx: Index,
@@ -18,7 +19,7 @@ impl Item {
             data: 0,
             on_readylist: false,
             qd,
-        }
+        };
     }
 }
 
@@ -40,5 +41,4 @@ impl PartialEq for Item {
     }
 }
 
-impl Eq for Item { }
-
+impl Eq for Item {}

@@ -122,10 +122,24 @@ impl Socket {
 
     pub fn available_events(&self, evs: Event) -> Event {
         let other = match &self.data {
-            SocketData::Passive { accept } => if accept.is_finished() { Event::IN } else { Event::empty()},
+            SocketData::Passive { accept } => {
+                if accept.is_finished() {
+                    Event::IN
+                } else {
+                    Event::empty()
+                }
+            }
             SocketData::Active { write, read } => {
-                let write = if !write.is_running() { Event::OUT } else { Event::empty() };
-                let read = if read.is_finished() { Event::IN } else { Event::empty() };
+                let write = if !write.is_running() {
+                    Event::OUT
+                } else {
+                    Event::empty()
+                };
+                let read = if read.is_finished() {
+                    Event::IN
+                } else {
+                    Event::empty()
+                };
                 write.union(read)
             }
         };
@@ -134,11 +148,13 @@ impl Socket {
 
     pub fn schedule_events(&mut self, evs: Event, qtoks: &mut Vec<demi::QToken>) {
         match &mut self.data {
-            SocketData::Passive { accept } => if evs.intersects(Event::IN) {
-                let tok = self.soc.accept().unwrap();
-                accept.start(tok, ());
-                qtoks.push(tok);
-            },
+            SocketData::Passive { accept } => {
+                if evs.intersects(Event::IN) {
+                    let tok = self.soc.accept().unwrap();
+                    accept.start(tok, ());
+                    qtoks.push(tok);
+                }
+            }
             SocketData::Active { write, read } => {
                 if evs.intersects(Event::IN) {
                     let tok = self.soc.pop().unwrap();
@@ -156,11 +172,13 @@ impl Socket {
 
     pub fn process_event(&mut self, val: QResultValue) {
         match &mut self.data {
-            SocketData::Passive { accept } => if let QResultValue::Accept(acc) = val {
+            SocketData::Passive { accept } => {
+                if let QResultValue::Accept(acc) = val {
                     accept.complete(Ok(acc));
                 } else {
                     panic!();
-                },
+                }
+            }
 
             SocketData::Active { write, read } => match val {
                 QResultValue::Push => write.complete(Ok(())),
@@ -215,7 +233,6 @@ impl Socket {
 
         return Ok(len);
     }
-
 }
 
 impl std::convert::From<demi::AcceptResult> for Socket {

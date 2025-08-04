@@ -3,8 +3,9 @@ use std::{cell::RefCell, collections::BTreeSet};
 use super::item::Item;
 use std::collections::btree_set::Iter;
 
+#[derive(Debug)]
 pub struct Items {
-    inner: BTreeSet<RefCell<Item>>
+    inner: BTreeSet<RefCell<Item>>,
 }
 
 impl Items {
@@ -18,9 +19,11 @@ impl Items {
         self.inner.insert(RefCell::new(it));
     }
 
-
     pub fn take(&mut self, needle: Item) -> Option<Item> {
-        return self.inner.take(&RefCell::new(needle)).map(|cell| cell.into_inner());
+        return self
+            .inner
+            .take(&RefCell::new(needle))
+            .map(|cell| cell.into_inner());
     }
 
     pub fn get(&mut self, needle: Item) -> Option<&RefCell<Item>> {
@@ -35,4 +38,3 @@ impl Items {
         return self.inner.iter();
     }
 }
-

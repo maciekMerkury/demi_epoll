@@ -4,10 +4,13 @@ use std::{
     time::Duration,
 };
 
-use crate::{socket::Socket, wrappers::{
-    demi::{self, QResult, QToken},
-    errno::{PosixError, PosixResult},
-}};
+use crate::{
+    socket::Socket,
+    wrappers::{
+        demi::{self, QResult, QToken},
+        errno::{PosixError, PosixResult},
+    },
+};
 
 pub trait Schedulable: Sized {
     type Payload: Debug;
@@ -35,7 +38,7 @@ impl Schedulable for demi::AcceptResult {
 }
 
 impl Schedulable for () {
-    type Payload = demi::SgArray; 
+    type Payload = demi::SgArray;
 
     fn from_qresult(val: QResult) -> Self {
         assert!(matches!(val.value.unwrap(), demi::QResultValue::Push));
@@ -57,7 +60,7 @@ impl Schedulable for demi::SgArrayByteIter {
             panic!("cannot create SgArrayByteIter from {:?}", val);
         }
     }
-    
+
     fn schedule(soc: &mut demi::SocketQd, _: &mut Self::Payload) -> demi::QToken {
         return soc.pop().unwrap();
     }
@@ -117,10 +120,7 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running {
-                    payload,
-                    tok,
-                };
+                *self = Op::Running { payload, tok };
                 return None;
             }
             Op::Running { .. } => {
@@ -144,10 +144,7 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running {
-                    payload,
-                    tok,
-                };
+                *self = Op::Running { payload, tok };
                 return None;
             }
             Op::Running { .. } => {
@@ -202,5 +199,4 @@ where
             *self = Self::Completed(res.map(T::from_qresult));
         }
     }
-
 }

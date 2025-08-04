@@ -1,5 +1,6 @@
 use bitfields::bitfield;
 use libc::c_int;
+use log::trace;
 use std::default::Default;
 
 use crate::wrappers::errno::{PosixError, PosixResult};
@@ -59,6 +60,7 @@ impl<const S: bool, T> Buffer<S, T> {
 
     pub fn get(&self, idx: Index) -> Option<&T> {
         if !idx.is_dpoll() {
+            trace!("{idx:?} is not dpoll");
             return None;
         }
         return match &self.get_entry(idx)?.field {

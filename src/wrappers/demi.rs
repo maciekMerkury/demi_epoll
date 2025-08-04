@@ -310,9 +310,11 @@ impl std::convert::TryFrom<raw::demi_qresult> for QResult {
             Opcode::INVALID => panic!("invalid request to demikernel"),
             Opcode::CONNECT => Ok(None),
             Opcode::CLOSE => Ok(None),
-            Opcode::FAILED => Err(PosixError::from_error_code(value.qr_ret.try_into().unwrap())
-                .err()
-                .unwrap()),
+            Opcode::FAILED => Err(
+                PosixError::from_error_code(value.qr_ret.try_into().unwrap())
+                    .err()
+                    .unwrap(),
+            ),
         }?;
 
         return Ok(Self {
@@ -396,7 +398,9 @@ impl SocketQd {
     #[inline]
     pub fn push(&mut self, sga: &SgArray) -> PosixResult<QToken> {
         let mut tok: QToken = 0;
-        PosixError::from_error_code(unsafe { raw::demi_push(&mut tok, self.qd as c_int, &sga.sga) })?;
+        PosixError::from_error_code(unsafe {
+            raw::demi_push(&mut tok, self.qd as c_int, &sga.sga)
+        })?;
 
         return Ok(tok);
     }

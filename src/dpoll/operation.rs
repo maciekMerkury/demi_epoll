@@ -1,4 +1,5 @@
-use libc::{c_int, epoll_event, EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD};
+use libc::{EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD, c_int, epoll_event};
+use log::trace;
 
 use crate::{buffer::Index, wrappers::demi};
 
@@ -13,16 +14,31 @@ pub enum Operation {
         data: u64,
     },
     Del(Option<demi::DemiQd>, Index),
-    Mod(Option<demi::DemiQd>, Index, Event)
+    Mod(Option<demi::DemiQd>, Index, Event),
 }
 
 impl Operation {
-    pub fn new(idx: Index, qd: Option<demi::DemiQd>, op: c_int, event: Option<&epoll_event>) -> Result<Self, DpollErrors> {
+    pub fn new(
+        idx: Index,
+        qd: Option<demi::DemiQd>,
+        op: c_int,
+        event: Option<&epoll_event>,
+    ) -> Result<Self, DpollErrors> {
+        trace!("event: {:?}", event);
         match op {
-            EPOLL_CTL_ADD => Ok(Self::Add { idx, qd, evs: event.unwrap().events.try_into().unwrap(), data: event.unwrap().u64 }),
+            EPOLL_CTL_ADD => Ok(Self::Add {
+                idx,
+                qd,
+                evs: event.unwrap().events.try_into().unwrap(),
+                data: event.unwrap().u64,
+            }),
             EPOLL_CTL_DEL => Ok(Self::Del(qd, idx)),
-            EPOLL_CTL_MOD => Ok(Self::Mod(qd, idx, event.unwrap().events.try_into().unwrap())),
-            _ => return Err(DpollErrors::InvalidOp(op))
+            EPOLL_CTL_MOD => Ok(Self::Mod(
+                qd,
+                idx,
+                event.unwrap().events.try_into().unwrap(),
+            )),
+            _ => return Err(DpollErrors::InvalidOp(op)),
         }
     }
 
@@ -45,12 +61,12 @@ impl Operation {
                     events: evs.bits(),
                     u64: data,
                 });
-            },
+            }
             Operation::Del(_, idx) => {
                 op = EPOLL_CTL_DEL;
                 fd = idx.into();
                 event = None;
-            },
+            }
             Operation::Mod(_, idx, evs) => {
                 op = EPOLL_CTL_MOD;
                 fd = idx.into();
@@ -58,10 +74,9 @@ impl Operation {
                     events: evs.bits(),
                     u64: 0,
                 });
-            },
+            }
         }
 
         return (op, fd, event);
     }
 }
-

@@ -270,7 +270,7 @@ pub enum PosixError {
 }
 
 impl PosixError {
-    pub fn from_errno() -> PosixResult<()>{
+    pub fn from_errno() -> PosixResult<()> {
         let err = unsafe { libc::__errno_location().read() };
         return Self::from_error_code(err);
     }
