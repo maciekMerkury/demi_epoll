@@ -25,7 +25,7 @@ impl Epoll {
         };
 
         if fd.is_negative() {
-            return Err(PosixError::from_error_code(unsafe { libc::__errno_location().read() }).unwrap_err());
+            return PosixError::from_errno().map(|_| unreachable!());
         }
 
         return Ok(Self { fd });
@@ -39,7 +39,7 @@ impl Epoll {
         };
         let res = unsafe { libc::epoll_ctl(self.fd, op, fd, ptr) };
 
-        return Err(PosixError::from_error_code(unsafe { libc::__errno_location().read() }).unwrap_err());
+        return PosixError::from_errno();
     }
 
     pub fn wait(&mut self, evs: &mut [MaybeUninit<epoll_event>], timeout: Option<Duration>) -> PosixResult<usize> {
