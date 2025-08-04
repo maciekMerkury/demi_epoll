@@ -233,7 +233,7 @@ pub unsafe extern "C" fn dpoll_ctl(
 ) -> c_int {
     let pol: buf::Index = dpollfd.into();
     let soc: buf::Index = fd.into();
-    let qd = SOCKETS.lock().unwrap().borrow().get(soc).unwrap().soc.qd;
+    let qd = SOCKETS.lock().unwrap().borrow().get(soc).map(|s| s.soc.qd);
 
     let op = dpoll::Operation::new(soc, qd, op, unsafe {event.as_ref()}).unwrap();
     let res = DPOLLS.lock().unwrap().get_mut().get_mut(pol).unwrap().ctl(op);

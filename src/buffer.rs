@@ -42,7 +42,7 @@ impl<const S: bool, T> Buffer<S, T> {
     }
 
     pub fn free(&mut self, idx: Index) {
-        assert_eq!(idx.is_socket(), S);
+        assert!(idx.is_dpoll());
         let next_free = self.next_free;
         let entry = self.get_entry_mut(idx).unwrap();
 
@@ -58,8 +58,9 @@ impl<const S: bool, T> Buffer<S, T> {
     }
 
     pub fn get(&self, idx: Index) -> Option<&T> {
-        assert!(idx.is_dpoll());
-        assert!(idx.is_socket() == S);
+        if !idx.is_dpoll() {
+            return None;
+        }
         return match &self.get_entry(idx)?.field {
             Field::Item(it) => Some(it),
             Field::Free(_) => None,
@@ -67,6 +68,9 @@ impl<const S: bool, T> Buffer<S, T> {
     }
 
     pub fn get_mut(&mut self, idx: Index) -> Option<&mut T> {
+        if !idx.is_dpoll() {
+            return None;
+        }
         return match &mut self.get_entry_mut(idx)?.field {
             Field::Item(it) => Some(it),
             Field::Free(_) => None,

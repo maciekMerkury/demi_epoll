@@ -73,17 +73,17 @@ impl Dpoll {
                         idx,
                         data,
                         on_readylist: false,
-                        qd,
+                        qd: qd.unwrap(),
                     });
             },
             Operation::Del(qd, index) => {
-                let mut it = self.items.take(Item::dummy(qd)).unwrap();
+                let mut it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
                 if it.on_readylist {
                     self.ready_list.remove(&mut it);
                 }
             }
             Operation::Mod(qd, index, event) => {
-                self.items.get(Item::dummy(qd)).unwrap().borrow_mut().evs = event;
+                self.items.get(Item::dummy(qd.unwrap())).unwrap().borrow_mut().evs = event;
             },
         }
 
