@@ -106,7 +106,7 @@ pub unsafe extern "C" fn dpoll_accept(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
-    trace!("");
+    trace!("closing {fd}");
     let idx: buf::Index = fd.into();
 
     let res = if idx.is_dpoll() {
@@ -122,6 +122,7 @@ pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
         unsafe { libc::close(fd) }
     };
 
+    trace!("closed {fd}, ret: {res}");
     return res;
 }
 

@@ -127,7 +127,7 @@ impl Socket {
     }
 
     pub fn close(&mut self) {
-        self.data.flush();
+        //self.data.flush();
         self.soc.close().unwrap();
         self.open = false;
     }

@@ -194,6 +194,7 @@ where
                 if err == PosixError::WOULDBLOCK {
                     None
                 } else {
+                    panic!("{}", err);
                     Some(Err(err))
                 }
             }
@@ -201,6 +202,6 @@ where
 
         if let Some(res) = res {
             *self = Self::Completed(res.map(T::from_qresult));
-        }
+        } 
     }
 }
