@@ -1,40 +1,47 @@
-use std::{cell::RefCell, collections::BTreeSet};
+use std::{cell::RefCell, collections::{BTreeMap, btree_map::Values}, sync::{Arc, Mutex}};
+
+use crate::wrappers::demi;
 
 use super::item::Item;
-use std::collections::btree_set::Iter;
 
 #[derive(Debug)]
 pub struct Items {
-    inner: BTreeSet<RefCell<Item>>,
+    inner: BTreeMap<demi::DemiQd, Arc<Mutex<Item>>>
 }
 
 impl Items {
     pub fn new() -> Self {
         return Self {
-            inner: BTreeSet::new(),
+            inner: BTreeMap::new(),
         };
     }
 
     pub fn insert(&mut self, it: Item) {
-        self.inner.insert(RefCell::new(it));
+        let qd = it.soc.lock().unwrap().soc.qd;
+        self.inner.insert(qd, Arc::new(Mutex::new(it)));
     }
 
-    pub fn take(&mut self, needle: Item) -> Option<Item> {
-        return self
-            .inner
-            .take(&RefCell::new(needle))
-            .map(|cell| cell.into_inner());
+    fn wrapped_op<F, T>(func: F, needle: Item) -> T
+        where F: FnOnce(&Item) -> T
+    {
+        let ret = func(&needle);
+        std::mem::forget(needle);
+        return ret;
     }
 
-    pub fn get(&mut self, needle: Item) -> Option<&RefCell<Item>> {
-        return self.inner.get(&RefCell::new(needle));
+    pub fn take(&mut self, needle: Item) -> Option<Arc<Mutex<Item>>> {
+        return Self::wrapped_op(|needle| self.inner.remove(&needle.get_qd()), needle);
+    }
+
+    pub fn get(&mut self, needle: Item) -> Option<Arc<Mutex<Item>>> {
+        return Self::wrapped_op(|needle| self.inner.get(&needle.get_qd()).map(|arc| arc.clone()), needle);
     }
 
     pub fn len(&self) -> usize {
         return self.inner.len();
     }
 
-    pub fn iter(&self) -> Iter<'_, RefCell<Item>> {
-        return self.inner.iter();
+    pub fn iter(&self) -> Values<'_, demi::DemiQd, Arc<Mutex<Item>>> {
+        return self.inner.values();
     }
 }

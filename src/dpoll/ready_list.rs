@@ -1,12 +1,12 @@
-use std::{cell::RefCell, collections::LinkedList};
+use std::{cell::RefCell, collections::LinkedList, sync::{Arc, Mutex}, thread::current};
 
-use crate::buffer::Index;
+use crate::{buffer::Index, socket::Socket};
 
 use super::item::Item;
 
 #[derive(Debug)]
 pub struct ReadyList {
-    list: LinkedList<(Index, u64)>,
+    list: LinkedList<(Arc<Mutex<Item>>, u64)>,
 }
 
 impl ReadyList {
@@ -16,20 +16,26 @@ impl ReadyList {
         };
     }
 
-    pub fn push(&mut self, item: &mut Item) {
-        if item.on_readylist {
-            return;
-        }
-        item.on_readylist = true;
-        self.list.push_back((item.idx, item.data));
+    pub fn push(&mut self, item: Arc<Mutex<Item>>) {
+        let data = {
+            let mut item = item.lock().unwrap();
+            item.on_readylist = true;
+            item.data
+        };
+        self.list.push_back((item, data));
     }
 
-    pub fn remove(&mut self, item: &mut Item) {
-        item.on_readylist = false;
-        let idx = item.idx;
+    pub fn remove(&mut self, item: Arc<Mutex<Item>>) {
+        let needle = {
+            let mut item = item.lock().unwrap();
+            item.on_readylist = false;
+            item.get_qd()
+        };
         let mut cursor = self.list.cursor_back_mut();
+
         while let Some(current) = cursor.current() {
-            if current.0 == idx {
+            let current = current.0.lock().unwrap().get_qd();
+            if current == needle {
                 cursor.remove_current();
                 break;
             }
@@ -43,14 +49,16 @@ impl ReadyList {
 
     pub fn drain<F>(&mut self, max: usize, mut func: F) -> usize
     where
-        F: FnMut(usize, Index, u64),
+        F: FnMut(usize, &Socket, u64),
     {
         let mut idx = 0;
 
         while let Some(curr) = self.list.pop_front()
             && idx < max
         {
-            func(idx, curr.0, curr.1);
+            let mut item = curr.0.lock().unwrap();
+            item.on_readylist = false;
+            func(idx, &item.soc.lock().unwrap(), curr.1);
             idx += 1;
         }
 

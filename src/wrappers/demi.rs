@@ -147,8 +147,7 @@ impl SgArrayByteIter {
 
     pub fn is_empty(&self) -> bool {
         let segs = unsafe { self.sga.segments() };
-        return self.seg_off == segs.len() - 1
-            && self.byte_off > segs[self.seg_off].data_len_bytes as usize;
+        return self.seg_off > segs.len() - 1;
     }
 
     /// copies K bytes into dst
@@ -162,7 +161,7 @@ impl SgArrayByteIter {
 
         let max_copied = dst.len();
         let mut total_copied = 0;
-        while total_copied < max_copied && self.seg_off < segs.len() {
+        while total_copied < max_copied && !self.is_empty() {
             let seg = &segs[self.seg_off];
 
             let bytes_left = (seg.data_len_bytes as usize).saturating_sub(self.byte_off);

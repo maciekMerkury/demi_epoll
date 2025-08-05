@@ -2,6 +2,7 @@ use std::mem::MaybeUninit;
 use std::usize;
 
 use bitflags::Flags;
+use log::trace;
 
 use crate::dpoll::Event;
 use crate::operation::Operation;
@@ -10,6 +11,7 @@ use crate::wrappers::demi::QResultValue;
 use crate::wrappers::errno::PosixError;
 use crate::wrappers::{demi, errno::PosixResult};
 
+#[derive(Debug)]
 enum SocketData {
     Passive {
         accept: Operation<demi::AcceptResult>,
@@ -36,6 +38,7 @@ impl SocketData {
     }
 }
 
+#[derive(Debug)]
 pub struct Socket {
     pub soc: demi::SocketQd,
     /// to be used with getsockname
@@ -105,7 +108,10 @@ impl Socket {
     }
 
     pub fn write(&mut self, src: &[u8]) -> PosixResult<usize> {
-        return self.write_impl(|| demi::SgArray::from_slice(src));
+        trace!("writing {} to {}", src.len(), self.soc.qd);
+        let res = self.write_impl(|| demi::SgArray::from_slice(src));
+        trace!("res: {res:?}, BRUH: {self:?}");
+        return res;
     }
 
     pub fn writev(&mut self, src: &[libc::iovec]) -> PosixResult<usize> {
@@ -113,11 +119,11 @@ impl Socket {
     }
 
     pub fn read(&mut self, dst: &mut [MaybeUninit<u8>]) -> PosixResult<usize> {
-        return self.read_impl(|it| it.copy_bytes(dst).unwrap());
+        return self.read_impl(|it| it.copy_bytes(dst));
     }
 
     pub fn readv(&mut self, dst: &mut [libc::iovec]) -> PosixResult<usize> {
-        return self.read_impl(|it| it.copy_into_iovecs(dst).unwrap());
+        return self.read_impl(|it| it.copy_into_iovecs(dst));
     }
 
     pub fn available_events(&self, evs: Event) -> Event {
@@ -150,21 +156,37 @@ impl Socket {
         match &mut self.data {
             SocketData::Passive { accept } => {
                 if evs.intersects(Event::IN) {
-                    let tok = self.soc.accept().unwrap();
-                    accept.start(tok, ());
+                    let tok = match accept {
+                        Operation::None => {
+                            let tok = self.soc.accept().unwrap();
+                            accept.start(tok, ());
+                            tok
+                        },
+                        Operation::Running { tok, .. } => *tok,
+                        Operation::Completed(_) => unreachable!(),
+                    };
                     qtoks.push(tok);
                 }
             }
             SocketData::Active { write, read } => {
                 if evs.intersects(Event::IN) {
-                    let tok = self.soc.pop().unwrap();
-                    read.start(tok, ());
+                    let tok = match read {
+                        Operation::Running { tok, .. } => *tok,
+                        Operation::None => {
+                            let tok = self.soc.pop().unwrap();
+                            read.start(tok, ());
+                            tok
+                        },
+                        Operation::Completed(_) => unreachable!(),
+                    };
                     qtoks.push(tok);
                 }
-                if evs.intersects(Event::OUT) {
-                    if let Operation::Running { payload: _, tok } = write {
-                        qtoks.push(*tok);
-                    }
+
+                // always schedule pending writes
+                match write {
+                    Operation::Running { tok, .. } => qtoks.push(*tok),
+                    _ if evs.intersects(Event::OUT) => unreachable!(),
+                    _ => {},
                 }
             }
         };
@@ -197,10 +219,12 @@ impl Socket {
             _ => return Err(PosixError::INVAL),
         };
 
-        if write.poll() {
-            write.get().unwrap();
-        } else {
-            return Err(PosixError::WOULDBLOCK);
+        if !write.is_none() {
+            if write.poll() {
+                write.get().unwrap();
+            } else {
+                return Err(PosixError::WOULDBLOCK);
+            }
         }
 
         let sga = func();
@@ -211,7 +235,7 @@ impl Socket {
 
     fn read_impl<F>(&mut self, func: F) -> PosixResult<usize>
     where
-        F: FnOnce(&mut demi::SgArrayByteIter) -> usize,
+        F: FnOnce(&mut demi::SgArrayByteIter) -> Option<usize>,
     {
         let read = match &mut self.data {
             SocketData::Active { write, read } => read,
@@ -231,7 +255,8 @@ impl Socket {
             read.start(self.soc.pop().unwrap(), ());
         }
 
-        return Ok(len);
+        trace!("read {:?} bytes", len);
+        return len.ok_or(PosixError::WOULDBLOCK);
     }
 }
 

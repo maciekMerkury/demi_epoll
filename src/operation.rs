@@ -166,10 +166,14 @@ where
         return matches!(self, Self::Running { payload, tok });
     }
 
+    pub fn is_none(&self) -> bool {
+        return matches!(self, Self::None);
+    }
+
     #[inline]
     pub fn poll(&mut self) -> bool {
         self.wait(Some(Duration::ZERO));
-        return self.is_finished();
+        return self.is_none() || self.is_finished();
     }
 
     #[inline]

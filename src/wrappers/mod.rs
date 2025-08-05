@@ -12,3 +12,4 @@ mod raw;
 pub mod demi;
 pub mod errno;
 mod helpers;
+pub mod sigmask;

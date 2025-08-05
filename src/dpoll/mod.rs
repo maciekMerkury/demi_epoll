@@ -84,7 +84,7 @@ impl Dpoll {
         });
     }
 
-    pub fn ctl(&mut self, op: Operation) -> PosixResult<()> {
+    pub fn ctl(&mut self, socs: &Buffer<true, Arc<Mutex<Socket>>>, op: Operation) -> PosixResult<()> {
         if matches!(op, Operation::Add { .. }) {
             self.counter += 1;
         } else if matches!(op, Operation::Del(_, _)) {
@@ -102,22 +102,23 @@ impl Dpoll {
                     idx,
                     data,
                     on_readylist: false,
-                    qd: qd.unwrap(),
+                    soc: socs.get(idx).unwrap().clone(),
                 });
-            }
+            },
             Operation::Del(qd, index) => {
-                let mut it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
-                if it.on_readylist {
-                    self.ready_list.remove(&mut it);
+                let it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
+
+                if it.lock().unwrap().on_readylist {
+                    self.ready_list.remove(it);
                 }
-            }
+            },
             Operation::Mod(qd, index, event) => {
                 self.items
                     .get(Item::dummy(qd.unwrap()))
                     .unwrap()
-                    .borrow_mut()
+                    .lock().unwrap()
                     .evs = event;
-            }
+            },
         }
 
         return Ok(());
@@ -125,7 +126,6 @@ impl Dpoll {
 
     fn wait(
         &mut self,
-        socs: &Buffer<true, Mutex<Socket>>,
         timeout: Option<Duration>,
     ) -> PosixResult<()> {
         if self.qtoks.is_empty() {
@@ -134,15 +134,14 @@ impl Dpoll {
         }
         let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
         let res = res.unwrap();
-        let mut item = self.items.get(Item::dummy(res.qd)).unwrap().borrow_mut();
-        let soc = socs.get(item.idx).unwrap();
-        soc.try_lock().unwrap().process_event(res.value.unwrap());
-        self.ready_list.push(&mut item);
+        let mut item = self.items.get(Item::dummy(res.qd)).unwrap();
+        item.lock().unwrap().soc.lock().unwrap().process_event(res.value.unwrap());
+        self.ready_list.push(item);
 
         return Ok(());
     }
 
-    fn get_and_schedule_events(&mut self, socs: &Buffer<true, Mutex<Socket>>) {
+    fn get_and_schedule_events(&mut self) {
         self.qtoks.clear();
         self.qtoks.reserve(self.items.len() * 2);
 
@@ -150,30 +149,25 @@ impl Dpoll {
 
         let mut list = ReadyList::new();
         for item in self.items.iter() {
-            let mut item = item.borrow_mut();
-            let mut soc = socs.get(item.idx).unwrap().try_lock().unwrap();
-            let ready = soc.available_events(item.evs);
-            if !ready.is_empty() && !item.on_readylist {
-                list.push(&mut item);
+            let evs = item.lock().unwrap().evs;
+            let ready = item.lock().unwrap().soc.lock().unwrap().available_events(evs);
+
+            if !ready.is_empty() && !item.lock().unwrap().on_readylist {
+                list.push(item.clone());
             }
-            let evs_to_schedule = item.evs.difference(ready);
-            soc.schedule_events(evs_to_schedule, &mut self.qtoks);
+
+            let evs_to_schedule = evs.difference(ready);
+            item.lock().unwrap().soc.lock().unwrap().schedule_events(evs_to_schedule, &mut self.qtoks);
         }
         self.ready_list.append(list);
     }
 
     fn drain_ready_list(
         &mut self,
-        socs: &Buffer<true, Mutex<Socket>>,
         evs: &mut [MaybeUninit<epoll_event>],
     ) -> usize {
-        return self.ready_list.drain(evs.len(), |i, index, data| {
-            let events = socs
-                .get(index)
-                .unwrap()
-                .try_lock()
-                .unwrap()
-                .available_events(Event::all());
+        return self.ready_list.drain(evs.len(), |i, soc, data| {
+            let events = soc.available_events(Event::all());
             evs[i] = MaybeUninit::new(epoll_event {
                 events: events.bits(),
                 u64: data,
@@ -183,7 +177,6 @@ impl Dpoll {
 
     pub fn pwait(
         &mut self,
-        socs: &Buffer<true, Mutex<Socket>>,
         events: &mut [MaybeUninit<epoll_event>],
         mut timeout: Option<Duration>,
         sigmask: Option<&sigset_t>,
@@ -196,14 +189,14 @@ impl Dpoll {
             }
         }
 
-        self.get_and_schedule_events(socs);
+        self.get_and_schedule_events();
 
         if !self.ready_list.is_empty() {
             trace!("ready_list is not empty, only going to poll");
             timeout = Some(Duration::ZERO);
         }
 
-        match self.wait(socs, timeout) {
+        match self.wait(timeout) {
             Ok(()) => {}
             Err(PosixError::TIMEDOUT) => timeout = Some(Duration::ZERO),
             Err(e) => {
@@ -212,7 +205,7 @@ impl Dpoll {
             }
         }
 
-        let mut evs_len = self.drain_ready_list(socs, events);
+        let mut evs_len = self.drain_ready_list(events);
 
         if evs_len > 0 {
             timeout = Some(Duration::ZERO);
