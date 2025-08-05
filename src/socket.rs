@@ -36,6 +36,16 @@ impl SocketData {
             read: Operation::default(),
         };
     }
+
+    pub fn flush(&mut self) {
+        match self {
+            SocketData::Passive { accept } => accept.block(),
+            SocketData::Active { write, read } => {
+                write.block();
+                read.block();
+            }
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -44,19 +54,8 @@ pub struct Socket {
     /// to be used with getsockname
     pub addr: Option<libc::sockaddr_in>,
 
+    pub open: bool,
     data: SocketData,
-}
-
-impl Drop for Socket {
-    fn drop(&mut self) {
-        match &mut self.data {
-            SocketData::Passive { accept } => accept.block(),
-            SocketData::Active { write, read } => {
-                write.block();
-                read.block();
-            }
-        }
-    }
 }
 
 impl Socket {
@@ -68,6 +67,7 @@ impl Socket {
         return Self {
             soc,
             addr: None,
+            open: true,
             data: SocketData::Passive {
                 accept: Operation::None,
             },
@@ -124,6 +124,12 @@ impl Socket {
 
     pub fn readv(&mut self, dst: &mut [libc::iovec]) -> PosixResult<usize> {
         return self.read_impl(|it| it.copy_into_iovecs(dst));
+    }
+
+    pub fn close(&mut self) {
+        self.data.flush();
+        self.soc.close().unwrap();
+        self.open = false;
     }
 
     pub fn available_events(&self, evs: Event) -> Event {
@@ -265,6 +271,7 @@ impl std::convert::From<demi::AcceptResult> for Socket {
         return Self {
             soc: value.qd,
             addr: Some(value.addr),
+            open: true,
             data: SocketData::new_active(),
         };
     }

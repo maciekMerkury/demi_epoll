@@ -19,14 +19,7 @@ use libc::{
 };
 use log::trace;
 use std::{
-    cell::RefCell,
-    collections::{BTreeSet, LinkedList},
-    convert,
-    mem::MaybeUninit,
-    pin::Pin,
-    rc::Rc,
-    sync::{Arc, Mutex},
-    time::Duration,
+    cell::RefCell, collections::{BTreeSet, LinkedList}, convert, fs::ReadDir, mem::MaybeUninit, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
 };
 use thiserror::Error;
 
@@ -109,7 +102,7 @@ impl Dpoll {
                 let it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
 
                 if it.lock().unwrap().on_readylist {
-                    self.ready_list.remove(it);
+                    self.ready_list.remove(&it);
                 }
             },
             Operation::Mod(qd, index, event) => {
@@ -148,17 +141,36 @@ impl Dpoll {
         let mut added_events = 0;
 
         let mut list = ReadyList::new();
+        let mut delete_list = ReadyList::new();
         for item in self.items.iter() {
-            let evs = item.lock().unwrap().evs;
-            let ready = item.lock().unwrap().soc.lock().unwrap().available_events(evs);
+            let lock = item.lock().unwrap();
+            let mut soc = lock.soc.lock().unwrap();
+            if !soc.open {
+                //eprintln!("deleting the cunt");
+                delete_list.push(item.clone());
+                continue;
+            }
+            let evs = lock.evs;
+            let ready = soc.available_events(evs);
+
+            let evs_to_schedule = evs.difference(ready);
+            soc.schedule_events(evs_to_schedule, &mut self.qtoks);
 
             if !ready.is_empty() && !item.lock().unwrap().on_readylist {
                 list.push(item.clone());
             }
-
-            let evs_to_schedule = evs.difference(ready);
-            item.lock().unwrap().soc.lock().unwrap().schedule_events(evs_to_schedule, &mut self.qtoks);
         }
+
+        for mutex in delete_list.into_iter().map(|(item, _)| item) {
+            let item = mutex.lock().unwrap();
+
+            if item.on_readylist {
+                self.ready_list.remove(&mutex);
+            }
+
+            self.items.remove(&item);
+        }
+
         self.ready_list.append(list);
     }
 
@@ -179,23 +191,19 @@ impl Dpoll {
         &mut self,
         events: &mut [MaybeUninit<epoll_event>],
         mut timeout: Option<Duration>,
-        sigmask: Option<&sigset_t>,
     ) -> PosixResult<usize> {
         //trace!("pwait for {:?}, timeout: {timeout:?}", self);
-        let mut old_mask = MaybeUninit::uninit();
-        if let Some(mask) = sigmask {
-            unsafe {
-                assert_eq!(pthread_sigmask(SIG_SETMASK, mask, old_mask.as_mut_ptr()), 0);
-            }
-        }
-
+        //eprintln!("heloo");
+        //eprintln!("get");
         self.get_and_schedule_events();
 
+        //eprintln!("reset readylist");
         if !self.ready_list.is_empty() {
             trace!("ready_list is not empty, only going to poll");
             timeout = Some(Duration::ZERO);
         }
 
+        //eprintln!("self.wait");
         match self.wait(timeout) {
             Ok(()) => {}
             Err(PosixError::TIMEDOUT) => timeout = Some(Duration::ZERO),
@@ -205,6 +213,7 @@ impl Dpoll {
             }
         }
 
+        //eprintln!("drain_ready_list");
         let mut evs_len = self.drain_ready_list(events);
 
         if evs_len > 0 {
@@ -216,7 +225,7 @@ impl Dpoll {
             epoll = self.epoll
         );
 
-        //timeout = Some(Duration::from_secs(5));
+        //eprintln!("epoll.wait");
         evs_len += match self.epoll.wait(&mut events[evs_len..], timeout) {
             Ok(len) => len,
             Err(PosixError::TIMEDOUT) => 0,
@@ -229,15 +238,6 @@ impl Dpoll {
         if evs_len == 0 {
             trace!("epoll: {self:?} timed out");
             return Err(PosixError::TIMEDOUT);
-        }
-
-        if let Some(mask) = sigmask {
-            unsafe {
-                assert_eq!(
-                    pthread_sigmask(SIG_SETMASK, old_mask.as_ptr(), std::ptr::null_mut()),
-                    0
-                );
-            }
         }
 
         return Ok(evs_len);

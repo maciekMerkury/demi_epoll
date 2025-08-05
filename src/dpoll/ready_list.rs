@@ -25,7 +25,7 @@ impl ReadyList {
         self.list.push_back((item, data));
     }
 
-    pub fn remove(&mut self, item: Arc<Mutex<Item>>) {
+    pub fn remove(&mut self, item: &Arc<Mutex<Item>>) {
         let needle = {
             let mut item = item.lock().unwrap();
             item.on_readylist = false;
@@ -51,6 +51,9 @@ impl ReadyList {
     where
         F: FnMut(usize, &Socket, u64),
     {
+        if self.list.is_empty() {
+            return 0;
+        }
         let mut idx = 0;
 
         while let Some(curr) = self.list.pop_front()
@@ -67,5 +70,9 @@ impl ReadyList {
 
     pub fn is_empty(&self) -> bool {
         return self.list.is_empty();
+    }
+
+    pub fn into_iter(self) -> std::collections::linked_list::IntoIter<(Arc<Mutex<Item>>, u64)> {
+        return self.list.into_iter();
     }
 }

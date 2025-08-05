@@ -111,7 +111,9 @@ pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
 
     let res = if idx.is_dpoll() {
         if idx.is_socket() {
-            SOCKETS.write().unwrap().free(idx);
+            let mut sockets = SOCKETS.write().unwrap();
+            sockets.get(idx).unwrap().lock().unwrap().close();
+            sockets.free(idx);
         } else {
             DPOLLS.write().unwrap().free(idx);
         }
@@ -342,7 +344,7 @@ pub unsafe extern "C" fn dpoll_pwait(
     let res = pol
         .try_lock()
         .unwrap()
-        .pwait(evs, timeout, sigmask);
+        .pwait(evs, timeout);
 
     trace!("pwait on {pol:?} returned {res:?}");
     return match res {
