@@ -126,15 +126,28 @@ impl Dpoll {
             trace!("there are no qtoks, not going to wait");
             return Ok(());
         }
-        let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
-        let res = res?;
-        let item = self.items.get(Item::dummy(res.qd)).unwrap();
-        item.lock()
-            .unwrap()
-            .soc
-            .lock()
-            .unwrap()
-            .process_event(res.value.unwrap());
+        let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout);
+        let item;
+        match res {
+            Ok(res) => {
+                item = self.items.get(Item::dummy(res.qd)).unwrap().clone();
+                item.lock()
+                    .unwrap()
+                    .soc
+                    .lock()
+                    .unwrap()
+                    .process_event(res.value.unwrap());
+            }
+            Err(err) => {
+                item = self.items.get(Item::dummy(err.qd)).unwrap().clone();
+                item.lock()
+                    .unwrap()
+                    .soc
+                    .lock()
+                    .unwrap()
+                    .close_with_err(err.posix);
+            }
+        }
         self.ready_list.push(item);
 
         return Ok(());
@@ -149,11 +162,11 @@ impl Dpoll {
         for item in self.items.iter() {
             let lock = item.lock().unwrap();
             let mut soc = lock.soc.lock().unwrap();
-            if !soc.open {
-                //eprintln!("deleting the cunt");
+            if !soc.is_open() {
                 delete_list.push(item.clone());
                 continue;
             }
+
             let evs = lock.evs;
             let ready = soc.available_events(evs);
 

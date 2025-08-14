@@ -199,7 +199,7 @@ where
         let res = match demi::wait(tok, timeout) {
             Ok(res) => Some(Ok(res)),
             Err(err) => {
-                if err == PosixError::WOULDBLOCK {
+                if err.posix == PosixError::WOULDBLOCK {
                     None
                 } else {
                     panic!("{}", err);
