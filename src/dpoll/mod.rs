@@ -4,21 +4,14 @@ mod items;
 mod operation;
 mod ready_list;
 
-use crate::{
-    buffer::{Buffer, Index}, shared::Shared, socket::Socket, wrappers::{
-        demi,
-        errno::{PosixError, PosixResult},
-    }
+use crate::wrappers::{
+    demi,
+    errno::{PosixError, PosixResult},
 };
 use bitflags::bitflags;
-use libc::{
-    EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD, EPOLLIN, EPOLLOUT, SIG_SETMASK, c_int,
-    epoll_event,
-};
+use libc::{EPOLLIN, EPOLLOUT, epoll_event};
 use log::trace;
-use std::{
-    cell::RefCell, collections::{BTreeSet, LinkedList}, convert, fs::ReadDir, mem::MaybeUninit, pin::Pin, rc::Rc, time::Duration
-};
+use std::{convert, mem::MaybeUninit, time::Duration};
 use thiserror::Error;
 
 use epoll::Epoll;
@@ -50,8 +43,6 @@ impl convert::TryFrom<u32> for Event {
 pub enum DpollErrors {
     #[error("invalid error value: {:b}", 0)]
     InvalidEvent(u32),
-    #[error("invalid operation: {:b}", 0)]
-    InvalidOp(i32),
 }
 
 #[derive(Debug)]
@@ -90,24 +81,26 @@ impl Dpoll {
                     self.ready_list.remove(&it);
                 }
             }
-            operation::DpollOperation::Mod { qd, evs } => self.items.get(qd).unwrap().borrow_mut().evs = evs,
+            operation::DpollOperation::Mod { qd, evs } => {
+                self.items.get(qd).unwrap().borrow_mut().evs = evs
+            }
         }
 
         return Ok(());
     }
 
-    fn wait(
-        &mut self,
-        timeout: Option<Duration>,
-    ) -> PosixResult<()> {
+    fn wait(&mut self, timeout: Option<Duration>) -> PosixResult<()> {
         if self.qtoks.is_empty() {
             trace!("there are no qtoks, not going to wait");
             return Ok(());
         }
         let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
         let res = res.unwrap();
-        let mut item = self.items.get(res.qd).unwrap();
-        item.borrow().soc.borrow_mut().process_event(res.value.unwrap());
+        let item = self.items.get(res.qd).unwrap();
+        item.borrow()
+            .soc
+            .borrow_mut()
+            .process_event(res.value.unwrap());
         self.ready_list.push(item);
 
         return Ok(());
@@ -116,8 +109,6 @@ impl Dpoll {
     fn get_and_schedule_events(&mut self) {
         self.qtoks.clear();
         self.qtoks.reserve(self.items.len() * 2);
-
-        let mut added_events = 0;
 
         let mut list = ReadyList::new();
         let mut delete_list = ReadyList::new();
@@ -151,10 +142,7 @@ impl Dpoll {
         self.ready_list.append(list);
     }
 
-    fn drain_ready_list(
-        &mut self,
-        evs: &mut [MaybeUninit<epoll_event>],
-    ) -> usize {
+    fn drain_ready_list(&mut self, evs: &mut [MaybeUninit<epoll_event>]) -> usize {
         return self.ready_list.drain(evs.len(), |i, soc, data| {
             let events = soc.available_events(Event::all());
             evs[i] = MaybeUninit::new(epoll_event {
@@ -212,17 +200,4 @@ impl Dpoll {
 
         return Ok(evs_len);
     }
-}
-
-fn unwrap_not_timedout<T>(res: PosixResult<T>, zero: T) -> T {
-    return match res {
-        Ok(r) => r,
-        Err(err) => {
-            if err == PosixError::TIMEDOUT {
-                zero
-            } else {
-                res.unwrap()
-            }
-        }
-    };
 }

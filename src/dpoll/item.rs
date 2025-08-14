@@ -1,6 +1,4 @@
-use std::sync::{Arc, Mutex};
-
-use crate::{buffer::Index, shared::Shared, socket::Socket, wrappers::demi};
+use crate::{shared::Shared, socket::Socket, wrappers::demi};
 
 use super::Event;
 
@@ -19,16 +17,7 @@ impl Item {
             evs,
             data,
             on_readylist: false,
-        }
-    }
-    pub fn dummy(soc: &Socket) -> Self {
-        let qd = soc.soc.qd;
-        return Self {
-            soc: Shared::new(Socket::new(demi::SocketQd{ qd })),
-            evs: Event::empty(),
-            data: 0,
-            on_readylist: false,
-        }
+        };
     }
 
     pub fn get_qd(&self) -> demi::DemiQd {

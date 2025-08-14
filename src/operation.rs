@@ -4,12 +4,9 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    socket::Socket,
-    wrappers::{
-        demi::{self, QResult, QToken},
-        errno::{PosixError, PosixResult},
-    },
+use crate::wrappers::{
+    demi::{self, QResult, QToken},
+    errno::{PosixError, PosixResult},
 };
 
 pub trait Schedulable: Sized {
@@ -73,7 +70,7 @@ where
     T: Schedulable + Debug,
 {
     None,
-    Running { payload: T::Payload, tok: QToken },
+    Running { _payload: T::Payload, tok: QToken },
     Completed(PosixResult<T>),
 }
 
@@ -88,7 +85,10 @@ where
     pub fn start(&mut self, tok: demi::QToken, payload: T::Payload) {
         assert!(matches!(self, Operation::None));
 
-        *self = Self::Running { payload, tok };
+        *self = Self::Running {
+            _payload: payload,
+            tok,
+        };
     }
 
     pub fn complete(&mut self, result: PosixResult<T>) {
@@ -110,6 +110,7 @@ where
         };
     }
 
+    #[allow(dead_code)]
     pub fn get_mut_or_schedule<'a, F>(&'a mut self, func: F) -> Option<PosixResult<&'a mut T>>
     where
         F: FnOnce() -> (&'a mut demi::SocketQd, T::Payload),
@@ -120,7 +121,10 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running { payload, tok };
+                *self = Op::Running {
+                    _payload: payload,
+                    tok,
+                };
                 return None;
             }
             Op::Running { .. } => {
@@ -144,7 +148,10 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running { payload, tok };
+                *self = Op::Running {
+                    _payload: payload,
+                    tok,
+                };
                 return None;
             }
             Op::Running { .. } => {
@@ -163,7 +170,7 @@ where
     }
 
     pub fn is_running(&self) -> bool {
-        return matches!(self, Self::Running { payload, tok });
+        return matches!(self, Self::Running { .. });
     }
 
     pub fn is_none(&self) -> bool {
@@ -195,13 +202,12 @@ where
                     None
                 } else {
                     panic!("{}", err);
-                    Some(Err(err))
                 }
             }
         };
 
         if let Some(res) = res {
             *self = Self::Completed(res.map(T::from_qresult));
-        } 
+        }
     }
 }

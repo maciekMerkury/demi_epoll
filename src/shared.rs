@@ -1,6 +1,9 @@
-use std::{cell::{Ref, RefCell, RefMut}, rc::Rc};
+use std::{
+    cell::{Ref, RefCell, RefMut},
+    rc::Rc,
+};
 
-use crate::buffer::{Buffer, Index};
+use crate::buffer::Buffer;
 
 #[derive(Debug)]
 pub struct Shared<T> {
@@ -11,7 +14,7 @@ impl<T> Clone for Shared<T> {
     fn clone(&self) -> Self {
         return Self {
             inner: self.inner.clone(),
-        }
+        };
     }
 }
 
@@ -36,4 +39,3 @@ pub type ThreadBuffer<const B: bool, T> = RefCell<Buffer<B, Shared<T>>>;
 pub const fn new_thread_buffer<const B: bool, T>() -> ThreadBuffer<B, T> {
     return RefCell::new(Buffer::new());
 }
-

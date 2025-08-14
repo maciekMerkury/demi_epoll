@@ -280,8 +280,6 @@ impl PosixError {
     /// panics if errno does not map to anything
     #[allow(unreachable_code)]
     pub fn from_error_code(code: c_int) -> PosixResult<()> {
-        use PosixError::*;
-
         if code == 0 {
             return Ok(());
         } else if code <= 133 {

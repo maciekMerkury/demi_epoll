@@ -1,11 +1,12 @@
 use std::{mem::MaybeUninit, time::Duration};
 
-use libc::{c_int, epoll_event};
+use libc::epoll_event;
 use log::trace;
 
-use crate::{dpoll::operation::EpollOperation, wrappers::errno::{PosixError, PosixResult}};
-
-use super::operation::Operation;
+use crate::{
+    dpoll::operation::EpollOperation,
+    wrappers::errno::{PosixError, PosixResult},
+};
 
 #[repr(transparent)]
 #[derive(Debug)]
@@ -58,7 +59,7 @@ impl Epoll {
             )
         };
 
-        return if (res.is_negative()) {
+        return if res.is_negative() {
             PosixError::from_errno().map(|_| unreachable!())
         } else {
             Ok(res.try_into().unwrap())

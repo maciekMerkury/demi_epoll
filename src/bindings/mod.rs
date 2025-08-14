@@ -5,9 +5,14 @@ use log::trace;
 use utils::{cast_sockaddr, errno, result_as_errno};
 
 use crate::{
-    buffer::{self as buf, Index}, dpoll::{self, Dpoll}, shared::{new_thread_buffer, Shared, ThreadBuffer}, socket::Socket, wrappers::{
+    buffer::{self as buf, Index},
+    dpoll::{self, Dpoll},
+    shared::{Shared, ThreadBuffer, new_thread_buffer},
+    socket::Socket,
+    wrappers::{
         demi,
-        errno::{PosixError, PosixResult}, sigmask::Sigset,
+        errno::{PosixError, PosixResult},
+        sigmask::Sigset,
     },
 };
 use core::slice;
@@ -16,7 +21,15 @@ use libc::{
     ssize_t,
 };
 use std::{
-    cell::RefCell, env, io::Write, mem::{self, MaybeUninit}, ops::{Deref}, os::raw::{c_int, c_void}, rc::Rc, sync::{Arc, Mutex, RwLock}, time::Duration
+    cell::RefCell,
+    env,
+    io::Write,
+    mem::{self, MaybeUninit},
+    ops::Deref,
+    os::raw::{c_int, c_void},
+    rc::Rc,
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
 
 thread_local! {
@@ -248,10 +261,7 @@ pub unsafe extern "C" fn dpoll_ctl(
     let pol: buf::Index = dpollfd.into();
     let soc: buf::Index = fd.into();
 
-
-    let op = SOCKETS.with_borrow(|socs| {
-        unsafe { dpoll::Operation::from_raw(socs, op, fd, event) }
-    });
+    let op = SOCKETS.with_borrow(|socs| unsafe { dpoll::Operation::from_raw(socs, op, fd, event) });
     let res = DPOLLS.with_borrow_mut(|polls| polls.get(pol).unwrap().borrow_mut().ctl(op));
     return result_as_errno(res);
 }
