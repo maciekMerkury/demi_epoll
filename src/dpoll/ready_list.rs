@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::LinkedList, sync::{Arc, Mutex}, thread::current};
 
-use crate::{buffer::Index, socket::Socket};
+use crate::{buffer::Index, shared::Shared, socket::Socket};
 
 use super::item::Item;
 
 #[derive(Debug)]
 pub struct ReadyList {
-    list: LinkedList<(Arc<Mutex<Item>>, u64)>,
+    list: LinkedList<(Shared<Item>, u64)>,
 }
 
 impl ReadyList {
@@ -16,25 +16,25 @@ impl ReadyList {
         };
     }
 
-    pub fn push(&mut self, item: Arc<Mutex<Item>>) {
+    pub fn push(&mut self, item: Shared<Item>) {
         let data = {
-            let mut item = item.lock().unwrap();
+            let mut item = item.borrow_mut();
             item.on_readylist = true;
             item.data
         };
         self.list.push_back((item, data));
     }
 
-    pub fn remove(&mut self, item: &Arc<Mutex<Item>>) {
+    pub fn remove(&mut self, item: &Shared<Item>) {
         let needle = {
-            let mut item = item.lock().unwrap();
+            let mut item = item.borrow_mut();
             item.on_readylist = false;
             item.get_qd()
         };
         let mut cursor = self.list.cursor_back_mut();
 
         while let Some(current) = cursor.current() {
-            let current = current.0.lock().unwrap().get_qd();
+            let current = current.0.borrow().get_qd();
             if current == needle {
                 cursor.remove_current();
                 break;
@@ -59,9 +59,9 @@ impl ReadyList {
         while let Some(curr) = self.list.pop_front()
             && idx < max
         {
-            let mut item = curr.0.lock().unwrap();
+            let mut item = curr.0.borrow_mut();
             item.on_readylist = false;
-            func(idx, &item.soc.lock().unwrap(), curr.1);
+            func(idx, &item.soc.borrow(), curr.1);
             idx += 1;
         }
 
@@ -72,7 +72,7 @@ impl ReadyList {
         return self.list.is_empty();
     }
 
-    pub fn into_iter(self) -> std::collections::linked_list::IntoIter<(Arc<Mutex<Item>>, u64)> {
+    pub fn into_iter(self) -> std::collections::linked_list::IntoIter<(Shared<Item>, u64)> {
         return self.list.into_iter();
     }
 }

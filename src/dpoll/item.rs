@@ -1,31 +1,38 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{buffer::Index, socket::Socket, wrappers::demi};
+use crate::{buffer::Index, shared::Shared, socket::Socket, wrappers::demi};
 
 use super::Event;
 
 #[derive(Debug)]
 pub struct Item {
-    pub soc: Arc<Mutex<Socket>>,
+    pub soc: Shared<Socket>,
     pub evs: Event,
-    pub idx: Index,
     pub data: u64,
     pub on_readylist: bool,
 }
 
 impl Item {
-    pub fn dummy(qd: demi::DemiQd) -> Self {
+    pub fn new(soc: Shared<Socket>, evs: Event, data: u64) -> Self {
         return Self {
-            soc: Arc::new(Mutex::new(Socket::new(demi::SocketQd{ qd }))),
+            soc,
+            evs,
+            data,
+            on_readylist: false,
+        }
+    }
+    pub fn dummy(soc: &Socket) -> Self {
+        let qd = soc.soc.qd;
+        return Self {
+            soc: Shared::new(Socket::new(demi::SocketQd{ qd })),
             evs: Event::empty(),
-            idx: Index::new(),
             data: 0,
             on_readylist: false,
         }
     }
 
     pub fn get_qd(&self) -> demi::DemiQd {
-        return self.soc.lock().unwrap().soc.qd;
+        return self.soc.borrow().soc.qd;
     }
 }
 

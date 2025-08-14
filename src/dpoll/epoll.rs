@@ -3,7 +3,7 @@ use std::{mem::MaybeUninit, time::Duration};
 use libc::{c_int, epoll_event};
 use log::trace;
 
-use crate::wrappers::errno::{PosixError, PosixResult};
+use crate::{dpoll::operation::EpollOperation, wrappers::errno::{PosixError, PosixResult}};
 
 use super::operation::Operation;
 
@@ -32,14 +32,8 @@ impl Epoll {
         return Ok(Self { fd });
     }
 
-    pub fn ctl(&mut self, op: Operation) -> PosixResult<()> {
-        let (op, fd, mut event) = op.to_raw();
-        let ptr = match event.as_mut() {
-            Some(r) => r,
-            None => std::ptr::null_mut(),
-        };
-        trace!("epoll: {}, op: {op}, fd: {fd}, ptr: {ptr:?}", self.fd);
-        let res = unsafe { libc::epoll_ctl(self.fd, op, fd, ptr) };
+    pub fn ctl(&mut self, op: EpollOperation) -> PosixResult<()> {
+        let res = unsafe { libc::epoll_ctl(self.fd, op.op, op.fd, op.event) };
 
         return if res.is_negative() {
             PosixError::from_errno()

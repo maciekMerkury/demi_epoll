@@ -1,5 +1,7 @@
 #![feature(ptr_as_uninit, linked_list_cursors)]
 #![allow(dead_code, unused)]
+
+use std::{cell::RefCell, rc::Rc};
 #[allow(unused)]
 pub mod bindings;
 
@@ -8,3 +10,5 @@ mod dpoll;
 mod operation;
 mod socket;
 mod wrappers;
+mod shared;
+

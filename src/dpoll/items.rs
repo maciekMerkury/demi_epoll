@@ -1,12 +1,12 @@
 use std::{cell::RefCell, collections::{BTreeMap, btree_map::Values}, sync::{Arc, Mutex}};
 
-use crate::wrappers::demi;
+use crate::{shared::Shared, wrappers::demi};
 
 use super::item::Item;
 
 #[derive(Debug)]
 pub struct Items {
-    inner: BTreeMap<demi::DemiQd, Arc<Mutex<Item>>>
+    inner: BTreeMap<demi::DemiQd, Shared<Item>>,
 }
 
 impl Items {
@@ -17,17 +17,17 @@ impl Items {
     }
 
     pub fn insert(&mut self, it: Item) {
-        let qd = it.soc.lock().unwrap().soc.qd;
-        self.inner.insert(qd, Arc::new(Mutex::new(it)));
+        let qd = it.get_qd();
+        self.inner.insert(qd, Shared::new(it));
     }
 
-    pub fn take(&mut self, needle: Item) -> Option<Arc<Mutex<Item>>> {
-        let ret = self.inner.remove(&needle.get_qd());
+    pub fn take(&mut self, qd: demi::DemiQd) -> Option<Shared<Item>> {
+        let ret = self.inner.remove(&qd);
         return ret;
     }
 
-    pub fn get(&mut self, needle: Item) -> Option<Arc<Mutex<Item>>> {
-        let ret = self.inner.get(&needle.get_qd()).map(|arc| arc.clone());
+    pub fn get(&mut self, qd: demi::DemiQd) -> Option<Shared<Item>> {
+        let ret = self.inner.get(&qd).map(|rc| rc.clone());
         return ret;
     }
 
@@ -35,7 +35,7 @@ impl Items {
         return self.inner.len();
     }
 
-    pub fn iter(&self) -> Values<'_, demi::DemiQd, Arc<Mutex<Item>>> {
+    pub fn iter(&self) -> Values<'_, demi::DemiQd, Shared<Item>> {
         return self.inner.values();
     }
 

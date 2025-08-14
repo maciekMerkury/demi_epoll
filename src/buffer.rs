@@ -1,7 +1,7 @@
 use bitfields::bitfield;
 use libc::c_int;
 use log::trace;
-use std::default::Default;
+use std::{default::Default, mem};
 
 use crate::wrappers::errno::{PosixError, PosixResult};
 
@@ -40,6 +40,22 @@ impl<const S: bool, T> Buffer<S, T> {
 
         self.get_entry_mut(idx).unwrap().field = Field::Item(item);
         return idx;
+    }
+
+    pub fn take(&mut self, idx: Index) -> T {
+        assert!(idx.is_dpoll());
+        let next_free = self.next_free;
+        self.next_free = Some(idx.index() as usize);
+        let entry = self.get_entry_mut(idx).unwrap();
+
+        assert!(idx.generation() == entry.generation);
+
+        let item = match mem::replace(&mut entry.field, Field::Free(next_free)) {
+            Field::Item(it) => it,
+            Field::Free(_) => panic!("trying to take an already existing item"),
+        };
+
+        return item;
     }
 
     pub fn free(&mut self, idx: Index) {

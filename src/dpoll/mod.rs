@@ -5,21 +5,19 @@ mod operation;
 mod ready_list;
 
 use crate::{
-    buffer::{Buffer, Index},
-    socket::Socket,
-    wrappers::{
+    buffer::{Buffer, Index}, shared::Shared, socket::Socket, wrappers::{
         demi,
         errno::{PosixError, PosixResult},
-    },
+    }
 };
 use bitflags::bitflags;
 use libc::{
     EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD, EPOLLIN, EPOLLOUT, SIG_SETMASK, c_int,
-    epoll_event, pthread_sigmask, sigset_t,
+    epoll_event,
 };
 use log::trace;
 use std::{
-    cell::RefCell, collections::{BTreeSet, LinkedList}, convert, fs::ReadDir, mem::MaybeUninit, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
+    cell::RefCell, collections::{BTreeSet, LinkedList}, convert, fs::ReadDir, mem::MaybeUninit, pin::Pin, rc::Rc, time::Duration
 };
 use thiserror::Error;
 
@@ -63,7 +61,6 @@ pub struct Dpoll {
     ready_list: ReadyList,
     qtoks: Vec<demi::QToken>,
     epoll: Epoll,
-    counter: usize,
 }
 
 impl Dpoll {
@@ -73,45 +70,27 @@ impl Dpoll {
             qtoks: Vec::with_capacity(1024),
             epoll: Epoll::create(flags)?,
             ready_list: ReadyList::new(),
-            counter: 0,
         });
     }
 
-    pub fn ctl(&mut self, socs: &Buffer<true, Arc<Mutex<Socket>>>, op: Operation) -> PosixResult<()> {
-        if matches!(op, Operation::Add { .. }) {
-            self.counter += 1;
-        } else if matches!(op, Operation::Del(_, _)) {
-            self.counter -= 1;
-        }
+    pub fn ctl(&mut self, op: Operation) -> PosixResult<()> {
+        let op = match op {
+            Operation::Epoll(op) => return self.epoll.ctl(op),
+            Operation::Dpoll(op) => op,
+        };
 
-        if !op.idx().is_dpoll() {
-            trace!("non-dpoll ctl op: {op:?}");
-            return self.epoll.ctl(op);
-        }
         match op {
-            Operation::Add { qd, idx, evs, data } => {
-                self.items.insert(Item {
-                    evs,
-                    idx,
-                    data,
-                    on_readylist: false,
-                    soc: socs.get(idx).unwrap().clone(),
-                });
-            },
-            Operation::Del(qd, index) => {
-                let it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
+            operation::DpollOperation::Add { soc, evs, data } => {
+                self.items.insert(Item::new(soc, evs, data));
+            }
+            operation::DpollOperation::Del { qd } => {
+                let it = self.items.take(qd).unwrap();
 
-                if it.lock().unwrap().on_readylist {
+                if it.borrow().on_readylist {
                     self.ready_list.remove(&it);
                 }
-            },
-            Operation::Mod(qd, index, event) => {
-                self.items
-                    .get(Item::dummy(qd.unwrap()))
-                    .unwrap()
-                    .lock().unwrap()
-                    .evs = event;
-            },
+            }
+            operation::DpollOperation::Mod { qd, evs } => self.items.get(qd).unwrap().borrow_mut().evs = evs,
         }
 
         return Ok(());
@@ -127,8 +106,8 @@ impl Dpoll {
         }
         let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
         let res = res.unwrap();
-        let mut item = self.items.get(Item::dummy(res.qd)).unwrap();
-        item.lock().unwrap().soc.lock().unwrap().process_event(res.value.unwrap());
+        let mut item = self.items.get(res.qd).unwrap();
+        item.borrow().soc.borrow_mut().process_event(res.value.unwrap());
         self.ready_list.push(item);
 
         return Ok(());
@@ -143,29 +122,27 @@ impl Dpoll {
         let mut list = ReadyList::new();
         let mut delete_list = ReadyList::new();
         for item in self.items.iter() {
-            let lock = item.lock().unwrap();
-            let mut soc = lock.soc.lock().unwrap();
+            let it = item.borrow();
+            let mut soc = it.soc.borrow_mut();
             if !soc.open {
-                //eprintln!("deleting the cunt");
                 delete_list.push(item.clone());
                 continue;
             }
-            let evs = lock.evs;
-            let ready = soc.available_events(evs);
 
+            let evs = it.evs;
+            let ready = soc.available_events(evs);
             let evs_to_schedule = evs.difference(ready);
             soc.schedule_events(evs_to_schedule, &mut self.qtoks);
-
-            if !ready.is_empty() && !item.lock().unwrap().on_readylist {
+            if !ready.is_empty() && !it.on_readylist {
                 list.push(item.clone());
             }
         }
 
-        for mutex in delete_list.into_iter().map(|(item, _)| item) {
-            let item = mutex.lock().unwrap();
+        for it in delete_list.into_iter().map(|(item, _)| item) {
+            let item = it.borrow_mut();
 
             if item.on_readylist {
-                self.ready_list.remove(&mutex);
+                self.ready_list.remove(&it);
             }
 
             self.items.remove(&item);
@@ -192,18 +169,13 @@ impl Dpoll {
         events: &mut [MaybeUninit<epoll_event>],
         mut timeout: Option<Duration>,
     ) -> PosixResult<usize> {
-        //trace!("pwait for {:?}, timeout: {timeout:?}", self);
-        //eprintln!("heloo");
-        //eprintln!("get");
         self.get_and_schedule_events();
 
-        //eprintln!("reset readylist");
         if !self.ready_list.is_empty() {
             trace!("ready_list is not empty, only going to poll");
             timeout = Some(Duration::ZERO);
         }
 
-        //eprintln!("self.wait");
         match self.wait(timeout) {
             Ok(()) => {}
             Err(PosixError::TIMEDOUT) => timeout = Some(Duration::ZERO),
@@ -213,7 +185,6 @@ impl Dpoll {
             }
         }
 
-        //eprintln!("drain_ready_list");
         let mut evs_len = self.drain_ready_list(events);
 
         if evs_len > 0 {
@@ -225,7 +196,6 @@ impl Dpoll {
             epoll = self.epoll
         );
 
-        //eprintln!("epoll.wait");
         evs_len += match self.epoll.wait(&mut events[evs_len..], timeout) {
             Ok(len) => len,
             Err(PosixError::TIMEDOUT) => 0,
