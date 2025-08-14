@@ -126,7 +126,7 @@ impl Dpoll {
             return Ok(());
         }
         let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
-        let res = res.unwrap();
+        let res = res?;
         let mut item = self.items.get(Item::dummy(res.qd)).unwrap();
         item.lock().unwrap().soc.lock().unwrap().process_event(res.value.unwrap());
         self.ready_list.push(item);
@@ -192,18 +192,13 @@ impl Dpoll {
         events: &mut [MaybeUninit<epoll_event>],
         mut timeout: Option<Duration>,
     ) -> PosixResult<usize> {
-        //trace!("pwait for {:?}, timeout: {timeout:?}", self);
-        //eprintln!("heloo");
-        //eprintln!("get");
         self.get_and_schedule_events();
 
-        //eprintln!("reset readylist");
         if !self.ready_list.is_empty() {
             trace!("ready_list is not empty, only going to poll");
             timeout = Some(Duration::ZERO);
         }
 
-        //eprintln!("self.wait");
         match self.wait(timeout) {
             Ok(()) => {}
             Err(PosixError::TIMEDOUT) => timeout = Some(Duration::ZERO),
@@ -244,15 +239,3 @@ impl Dpoll {
     }
 }
 
-fn unwrap_not_timedout<T>(res: PosixResult<T>, zero: T) -> T {
-    return match res {
-        Ok(r) => r,
-        Err(err) => {
-            if err == PosixError::TIMEDOUT {
-                zero
-            } else {
-                res.unwrap()
-            }
-        }
-    };
-}
