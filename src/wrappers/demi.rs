@@ -293,20 +293,8 @@ pub struct QResult {
     pub value: Option<QResultValue>,
 }
 
-#[derive(Debug, Error)]
-pub struct QResultError {
-    pub posix: PosixError,
-    pub qd: DemiQd,
-}
-
-impl std::fmt::Display for QResultError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
-    }
-}
-
 impl std::convert::TryFrom<raw::demi_qresult> for QResult {
-    type Error = QResultError;
+    type Error = PosixError;
 
     fn try_from(value: raw::demi_qresult) -> Result<Self, Self::Error> {
         let opcode = value.qr_opcode.try_into().unwrap();
@@ -321,12 +309,11 @@ impl std::convert::TryFrom<raw::demi_qresult> for QResult {
             Opcode::INVALID => panic!("invalid request to demikernel"),
             Opcode::CONNECT => Ok(None),
             Opcode::CLOSE => Ok(None),
-            Opcode::FAILED => Err(QResultError {
-                posix: PosixError::from_error_code(value.qr_ret.try_into().unwrap())
+            Opcode::FAILED => Err(
+                PosixError::from_error_code(value.qr_ret.try_into().unwrap())
                     .err()
                     .unwrap(),
-                qd: value.qr_qd as u32,
-            }),
+            ),
         }?;
 
         return Ok(Self {
@@ -426,7 +413,7 @@ impl SocketQd {
     }
 }
 
-pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<Result<QResult, QResultError>> {
+pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<QResult> {
     let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::uninit();
     let ts: raw::timespec;
     let ts_ptr = if let Some(d) = timeout {
@@ -437,14 +424,14 @@ pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<Result<QResul
     };
 
     PosixError::from_error_code(unsafe { raw::demi_wait(res.as_mut_ptr(), tok, ts_ptr) })?;
-    return Ok(unsafe { res.assume_init() }.try_into());
+    return unsafe { res.assume_init() }.try_into();
 }
 
 pub fn wait_any(
     toks: &[QToken],
     timeout: Option<Duration>,
-) -> PosixResult<(usize, Result<QResult, QResultError>)> {
-    let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::zeroed();
+) -> PosixResult<(usize, PosixResult<QResult>)> {
+    let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::uninit();
     let ts: raw::timespec;
     let ts_ptr = if let Some(d) = timeout {
         ts = helpers::duration_to_timespec(d);

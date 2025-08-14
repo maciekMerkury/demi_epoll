@@ -4,9 +4,12 @@ use std::{
     time::Duration,
 };
 
-use crate::wrappers::{
-    demi::{self, QResult, QToken},
-    errno::{PosixError, PosixResult},
+use crate::{
+    socket::Socket,
+    wrappers::{
+        demi::{self, QResult, QToken},
+        errno::{PosixError, PosixResult},
+    },
 };
 
 pub trait Schedulable: Sized {
@@ -70,7 +73,7 @@ where
     T: Schedulable + Debug,
 {
     None,
-    Running { _payload: T::Payload, tok: QToken },
+    Running { payload: T::Payload, tok: QToken },
     Completed(PosixResult<T>),
 }
 
@@ -85,10 +88,7 @@ where
     pub fn start(&mut self, tok: demi::QToken, payload: T::Payload) {
         assert!(matches!(self, Operation::None));
 
-        *self = Self::Running {
-            _payload: payload,
-            tok,
-        };
+        *self = Self::Running { payload, tok };
     }
 
     pub fn complete(&mut self, result: PosixResult<T>) {
@@ -110,7 +110,6 @@ where
         };
     }
 
-    #[allow(dead_code)]
     pub fn get_mut_or_schedule<'a, F>(&'a mut self, func: F) -> Option<PosixResult<&'a mut T>>
     where
         F: FnOnce() -> (&'a mut demi::SocketQd, T::Payload),
@@ -121,10 +120,7 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running {
-                    _payload: payload,
-                    tok,
-                };
+                *self = Op::Running { payload, tok };
                 return None;
             }
             Op::Running { .. } => {
@@ -148,10 +144,7 @@ where
             Op::None => {
                 let (soc, mut payload) = func();
                 let tok = T::schedule(soc, &mut payload);
-                *self = Op::Running {
-                    _payload: payload,
-                    tok,
-                };
+                *self = Op::Running { payload, tok };
                 return None;
             }
             Op::Running { .. } => {
@@ -170,7 +163,7 @@ where
     }
 
     pub fn is_running(&self) -> bool {
-        return matches!(self, Self::Running { .. });
+        return matches!(self, Self::Running { payload, tok });
     }
 
     pub fn is_none(&self) -> bool {
@@ -183,10 +176,9 @@ where
         return self.is_none() || self.is_finished();
     }
 
-    #[allow(dead_code)]
     #[inline]
     pub fn block(&mut self) {
-        return self.wait(None);
+        self.wait(None);
     }
 
     fn wait(&mut self, timeout: Option<Duration>) {
@@ -197,17 +189,19 @@ where
         };
 
         let res = match demi::wait(tok, timeout) {
-            Ok(res) => res,
+            Ok(res) => Some(Ok(res)),
             Err(err) => {
                 if err == PosixError::WOULDBLOCK {
-                    return;
+                    None
                 } else {
                     panic!("{}", err);
+                    Some(Err(err))
                 }
             }
         };
 
-        let res = res.map_err(|e| e.posix).map(T::from_qresult);
-        *self = Self::Completed(res);
+        if let Some(res) = res {
+            *self = Self::Completed(res.map(T::from_qresult));
+        } 
     }
 }

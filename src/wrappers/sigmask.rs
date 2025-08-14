@@ -1,6 +1,6 @@
 use std::mem::MaybeUninit;
 
-use libc::{SIG_SETMASK, pthread_sigmask, sigset_t};
+use libc::{pthread_sigmask, sigset_t, SIG_SETMASK};
 
 pub struct Sigset {
     old: Option<MaybeUninit<sigset_t>>,
@@ -19,7 +19,9 @@ impl Sigset {
             assert_eq!(pthread_sigmask(SIG_SETMASK, new, old.as_mut_ptr()), 0);
         }
 
-        return Self { old: Some(old) };
+        return Self {
+            old: Some(old),
+        };
     }
 }
 
@@ -27,11 +29,10 @@ impl Drop for Sigset {
     fn drop(&mut self) {
         match self.old {
             None => return,
-            Some(old) => unsafe {
-                assert_eq!(
-                    pthread_sigmask(SIG_SETMASK, old.as_ptr(), std::ptr::null_mut()),
-                    0
-                );
+            Some(old) => {
+                unsafe {
+                    assert_eq!(pthread_sigmask(SIG_SETMASK, old.as_ptr(), std::ptr::null_mut()), 0);
+                }
             },
         }
     }

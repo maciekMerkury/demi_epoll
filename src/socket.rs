@@ -1,6 +1,7 @@
 use std::mem::MaybeUninit;
 use std::usize;
 
+use bitflags::Flags;
 use log::trace;
 
 use crate::dpoll::Event;
@@ -36,7 +37,6 @@ impl SocketData {
         };
     }
 
-    #[allow(dead_code)]
     pub fn flush(&mut self) {
         match self {
             SocketData::Passive { accept } => accept.block(),
@@ -49,19 +49,12 @@ impl SocketData {
 }
 
 #[derive(Debug)]
-enum OpenStatus {
-    Open,
-    Closed,
-    Error(PosixError),
-}
-
-#[derive(Debug)]
 pub struct Socket {
     pub soc: demi::SocketQd,
     /// to be used with getsockname
     pub addr: Option<libc::sockaddr_in>,
 
-    status: OpenStatus,
+    pub open: bool,
     data: SocketData,
 }
 
@@ -74,28 +67,15 @@ impl Socket {
         return Self {
             soc,
             addr: None,
-            status: OpenStatus::Open,
+            open: true,
             data: SocketData::Passive {
                 accept: Operation::None,
             },
         };
     }
 
-    pub fn is_open(&self) -> bool {
-        return matches!(self.status, OpenStatus::Open);
-    }
-
-    fn status(&self) -> PosixResult<bool> {
-        return match self.status {
-            OpenStatus::Open => Ok(true),
-            OpenStatus::Closed => Ok(false),
-            OpenStatus::Error(err) => Err(err),
-        };
-    }
-
     #[inline]
     pub fn bind(&mut self, addr: &libc::sockaddr_in) -> PosixResult<()> {
-        assert!(self.status()?);
         self.soc.bind(addr)?;
         self.data = SocketData::new_passive();
         self.addr = Some(*addr);
@@ -105,7 +85,6 @@ impl Socket {
 
     #[inline]
     pub fn listen(&mut self, backlog: i32) -> PosixResult<()> {
-        assert!(self.status()?);
         return self.soc.listen(backlog);
     }
 
@@ -113,7 +92,6 @@ impl Socket {
         &mut self,
         addr: Option<&mut MaybeUninit<libc::sockaddr_in>>,
     ) -> PosixResult<Self> {
-        assert!(self.status()?);
         let data = match &mut self.data {
             SocketData::Passive { accept } => accept,
             _ => return Err(PosixError::INVAL),
@@ -130,7 +108,6 @@ impl Socket {
     }
 
     pub fn write(&mut self, src: &[u8]) -> PosixResult<usize> {
-        assert!(self.status()?);
         trace!("writing {} to {}", src.len(), self.soc.qd);
         let res = self.write_impl(|| demi::SgArray::from_slice(src));
         trace!("res: {res:?}, BRUH: {self:?}");
@@ -138,30 +115,21 @@ impl Socket {
     }
 
     pub fn writev(&mut self, src: &[libc::iovec]) -> PosixResult<usize> {
-        assert!(self.status()?);
         return self.write_impl(|| demi::SgArray::from_slices(src));
     }
 
     pub fn read(&mut self, dst: &mut [MaybeUninit<u8>]) -> PosixResult<usize> {
-        assert!(self.status()?);
         return self.read_impl(|it| it.copy_bytes(dst));
     }
 
     pub fn readv(&mut self, dst: &mut [libc::iovec]) -> PosixResult<usize> {
-        assert!(self.status()?);
         return self.read_impl(|it| it.copy_into_iovecs(dst));
     }
 
     pub fn close(&mut self) {
-        assert!(self.status().unwrap());
         //self.data.flush();
         self.soc.close().unwrap();
-        self.status = OpenStatus::Closed;
-    }
-
-    pub fn close_with_err(&mut self, err: PosixError) {
-        self.soc.close().unwrap();
-        self.status = OpenStatus::Error(err)
+        self.open = false;
     }
 
     pub fn available_events(&self, evs: Event) -> Event {
@@ -199,7 +167,7 @@ impl Socket {
                             let tok = self.soc.accept().unwrap();
                             accept.start(tok, ());
                             tok
-                        }
+                        },
                         Operation::Running { tok, .. } => *tok,
                         Operation::Completed(_) => unreachable!(),
                     };
@@ -214,7 +182,7 @@ impl Socket {
                             let tok = self.soc.pop().unwrap();
                             read.start(tok, ());
                             tok
-                        }
+                        },
                         Operation::Completed(_) => unreachable!(),
                     };
                     qtoks.push(tok);
@@ -224,7 +192,7 @@ impl Socket {
                 match write {
                     Operation::Running { tok, .. } => qtoks.push(*tok),
                     _ if evs.intersects(Event::OUT) => unreachable!(),
-                    _ => {}
+                    _ => {},
                 }
             }
         };
@@ -253,7 +221,7 @@ impl Socket {
         F: FnOnce() -> demi::SgArray,
     {
         let write = match &mut self.data {
-            SocketData::Active { write, .. } => write,
+            SocketData::Active { write, read } => write,
             _ => return Err(PosixError::INVAL),
         };
 
@@ -276,7 +244,7 @@ impl Socket {
         F: FnOnce(&mut demi::SgArrayByteIter) -> Option<usize>,
     {
         let read = match &mut self.data {
-            SocketData::Active { read, .. } => read,
+            SocketData::Active { write, read } => read,
             _ => return Err(PosixError::INVAL),
         };
 
@@ -303,7 +271,7 @@ impl std::convert::From<demi::AcceptResult> for Socket {
         return Self {
             soc: value.qd,
             addr: Some(value.addr),
-            status: OpenStatus::Open,
+            open: true,
             data: SocketData::new_active(),
         };
     }

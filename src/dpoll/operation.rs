@@ -7,7 +7,12 @@ use super::{DpollErrors, Event};
 
 #[derive(Debug)]
 pub enum Operation {
-    Add { idx: Index, evs: Event, data: u64 },
+    Add {
+        qd: Option<demi::DemiQd>,
+        idx: Index,
+        evs: Event,
+        data: u64,
+    },
     Del(Option<demi::DemiQd>, Index),
     Mod(Option<demi::DemiQd>, Index, Event),
 }
@@ -23,6 +28,7 @@ impl Operation {
         match op {
             EPOLL_CTL_ADD => Ok(Self::Add {
                 idx,
+                qd,
                 evs: event.unwrap().events.try_into().unwrap(),
                 data: event.unwrap().u64,
             }),
