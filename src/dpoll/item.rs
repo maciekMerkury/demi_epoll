@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{buffer::Index, socket::Socket, wrappers::demi};
+use crate::{socket::Socket, wrappers::demi};
 
 use super::Event;
 
@@ -8,7 +8,6 @@ use super::Event;
 pub struct Item {
     pub soc: Arc<Mutex<Socket>>,
     pub evs: Event,
-    pub idx: Index,
     pub data: u64,
     pub on_readylist: bool,
 }
@@ -16,12 +15,11 @@ pub struct Item {
 impl Item {
     pub fn dummy(qd: demi::DemiQd) -> Self {
         return Self {
-            soc: Arc::new(Mutex::new(Socket::new(demi::SocketQd{ qd }))),
+            soc: Arc::new(Mutex::new(Socket::new(demi::SocketQd { qd }))),
             evs: Event::empty(),
-            idx: Index::new(),
             data: 0,
             on_readylist: false,
-        }
+        };
     }
 
     pub fn get_qd(&self) -> demi::DemiQd {

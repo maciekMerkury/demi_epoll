@@ -1,25 +1,25 @@
 mod utils;
-use env_logger::{Builder, Env};
-use lazy_static::lazy_static;
+use env_logger::Builder;
 use log::trace;
 use utils::{cast_sockaddr, errno, result_as_errno};
 
 use crate::{
     buffer::{self as buf, Buffer},
-    dpoll::{self, Dpoll, DpollErrors},
+    dpoll::{self, Dpoll},
     socket::Socket,
-    wrappers::{
-        self, demi,
-        errno::{PosixError, PosixResult}, sigmask::Sigset,
-    },
+    wrappers::{demi, errno::PosixError, sigmask::Sigset},
 };
-use core::slice;
 use libc::{
     AF_INET, SOCK_STREAM, epoll_event, iovec, sigset_t, size_t, sockaddr, sockaddr_in, socklen_t,
     ssize_t,
 };
 use std::{
-    cell::RefCell, env, io::Write, mem::{self, MaybeUninit}, ops::Deref, os::raw::{c_int, c_void}, sync::{Arc, Mutex, RwLock}, time::Duration
+    env,
+    io::Write,
+    mem::{self, MaybeUninit},
+    os::raw::{c_int, c_void},
+    sync::{Arc, Mutex, RwLock},
+    time::Duration,
 };
 
 #[inline]
@@ -32,6 +32,7 @@ static SOCKETS: RwLock<Buffer<true, Arc<Mutex<Socket>>>> = new_buffer();
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_socket(domain: c_int, r#type: c_int, proto: c_int) -> c_int {
+    _ = proto;
     trace!("creating new socket");
     assert!(domain == AF_INET);
     assert!(r#type == SOCK_STREAM);
@@ -111,9 +112,13 @@ pub unsafe extern "C" fn dpoll_close(fd: c_int) -> c_int {
 
     let res = if idx.is_dpoll() {
         if idx.is_socket() {
+            trace!("1");
             let mut sockets = SOCKETS.write().unwrap();
+            trace!("2");
             sockets.get(idx).unwrap().lock().unwrap().close();
+            trace!("3");
             sockets.free(idx);
+            trace!("4");
         } else {
             DPOLLS.write().unwrap().free(idx);
         }
@@ -242,7 +247,7 @@ pub unsafe extern "C" fn dpoll_readv(
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn dpoll_init() -> c_int {
-    if unsafe { result_as_errno(demi::meta_init()) }.is_negative() {
+    if result_as_errno(demi::meta_init()).is_negative() {
         return -1;
     }
 
@@ -278,10 +283,7 @@ pub unsafe extern "C" fn dpoll_create(flags: c_int) -> c_int {
         Err(e) => return errno(e),
     };
 
-    let idx = DPOLLS
-        .write()
-        .unwrap()
-        .allocate(Arc::new(Mutex::new(pol)));
+    let idx = DPOLLS.write().unwrap().allocate(Arc::new(Mutex::new(pol)));
     trace!("{:?}", idx);
     return idx.into();
 }
@@ -297,9 +299,7 @@ pub unsafe extern "C" fn dpoll_ctl(
     let pol: buf::Index = dpollfd.into();
     let soc: buf::Index = fd.into();
     let sockets = SOCKETS.read().unwrap();
-    let qd = sockets
-        .get(soc)
-        .map(|s| s.try_lock().unwrap().soc.qd);
+    let qd = sockets.get(soc).map(|s| s.try_lock().unwrap().soc.qd);
 
     let op = dpoll::Operation::new(soc, qd, op, unsafe { event.as_ref() }).unwrap();
     let res = DPOLLS
@@ -322,7 +322,7 @@ pub unsafe extern "C" fn dpoll_pwait(
     timeout: c_int,
     sigmask: *const sigset_t,
 ) -> c_int {
-    let old_set = Sigset::mask(sigmask);
+    let _old_set = Sigset::mask(sigmask);
     let pol: buf::Index = dpollfd.into();
 
     let evs = unsafe {
@@ -338,14 +338,10 @@ pub unsafe extern "C" fn dpoll_pwait(
     } else {
         Some(Duration::from_millis(timeout as u64))
     };
-    let sigmask = unsafe { sigmask.as_ref() };
 
     let pol = DPOLLS.read().unwrap().get(pol).unwrap().clone();
     trace!("pwait on {pol:?} for {timeout:?}");
-    let res = pol
-        .try_lock()
-        .unwrap()
-        .pwait(evs, timeout);
+    let res = pol.try_lock().unwrap().pwait(evs, timeout);
 
     trace!("pwait on {pol:?} returned {res:?}");
     return match res {
@@ -403,6 +399,9 @@ pub unsafe extern "C" fn dpoll_sendmsg(
     msg: *const libc::msghdr,
     flags: c_int,
 ) -> c_int {
+    _ = socket;
+    _ = msg;
+    _ = flags;
     unimplemented!();
 }
 
@@ -412,6 +411,9 @@ pub unsafe extern "C" fn dpoll_recvmsg(
     msg: *mut libc::msghdr,
     flags: c_int,
 ) -> c_int {
+    _ = socket;
+    _ = msg;
+    _ = flags;
     unimplemented!();
 }
 
@@ -421,5 +423,8 @@ pub unsafe extern "C" fn dpoll_connect(
     addr: *const sockaddr,
     len: socklen_t,
 ) -> c_int {
+    _ = socket_fd;
+    _ = addr;
+    _ = len;
     unimplemented!();
 }

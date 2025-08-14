@@ -1,9 +1,6 @@
 use bitfields::bitfield;
-use libc::c_int;
 use log::trace;
 use std::default::Default;
-
-use crate::wrappers::errno::{PosixError, PosixResult};
 
 pub struct Buffer<const S: bool, T> {
     items: Vec<Entry<T>>,
@@ -18,6 +15,7 @@ impl<const S: bool, T> Buffer<S, T> {
         };
     }
 
+    #[allow(dead_code)]
     pub fn new_with_cap(cap: usize) -> Self {
         return Self {
             items: Vec::with_capacity(cap),

@@ -1,7 +1,6 @@
 use std::mem::MaybeUninit;
 use std::usize;
 
-use bitflags::Flags;
 use log::trace;
 
 use crate::dpoll::Event;
@@ -37,6 +36,7 @@ impl SocketData {
         };
     }
 
+    #[allow(dead_code)]
     pub fn flush(&mut self) {
         match self {
             SocketData::Passive { accept } => accept.block(),
@@ -167,7 +167,7 @@ impl Socket {
                             let tok = self.soc.accept().unwrap();
                             accept.start(tok, ());
                             tok
-                        },
+                        }
                         Operation::Running { tok, .. } => *tok,
                         Operation::Completed(_) => unreachable!(),
                     };
@@ -182,7 +182,7 @@ impl Socket {
                             let tok = self.soc.pop().unwrap();
                             read.start(tok, ());
                             tok
-                        },
+                        }
                         Operation::Completed(_) => unreachable!(),
                     };
                     qtoks.push(tok);
@@ -192,7 +192,7 @@ impl Socket {
                 match write {
                     Operation::Running { tok, .. } => qtoks.push(*tok),
                     _ if evs.intersects(Event::OUT) => unreachable!(),
-                    _ => {},
+                    _ => {}
                 }
             }
         };
@@ -221,7 +221,7 @@ impl Socket {
         F: FnOnce() -> demi::SgArray,
     {
         let write = match &mut self.data {
-            SocketData::Active { write, read } => write,
+            SocketData::Active { write, .. } => write,
             _ => return Err(PosixError::INVAL),
         };
 
@@ -244,7 +244,7 @@ impl Socket {
         F: FnOnce(&mut demi::SgArrayByteIter) -> Option<usize>,
     {
         let read = match &mut self.data {
-            SocketData::Active { write, read } => read,
+            SocketData::Active { read, .. } => read,
             _ => return Err(PosixError::INVAL),
         };
 

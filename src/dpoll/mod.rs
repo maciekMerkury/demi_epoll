@@ -5,7 +5,7 @@ mod operation;
 mod ready_list;
 
 use crate::{
-    buffer::{Buffer, Index},
+    buffer::Buffer,
     socket::Socket,
     wrappers::{
         demi,
@@ -13,13 +13,13 @@ use crate::{
     },
 };
 use bitflags::bitflags;
-use libc::{
-    EPOLL_CTL_ADD, EPOLL_CTL_DEL, EPOLL_CTL_MOD, EPOLLIN, EPOLLOUT, SIG_SETMASK, c_int,
-    epoll_event, pthread_sigmask, sigset_t,
-};
+use libc::{EPOLLIN, EPOLLOUT, epoll_event};
 use log::trace;
 use std::{
-    cell::RefCell, collections::{BTreeSet, LinkedList}, convert, fs::ReadDir, mem::MaybeUninit, pin::Pin, rc::Rc, sync::{Arc, Mutex}, time::Duration
+    convert,
+    mem::MaybeUninit,
+    sync::{Arc, Mutex},
+    time::Duration,
 };
 use thiserror::Error;
 
@@ -77,7 +77,11 @@ impl Dpoll {
         });
     }
 
-    pub fn ctl(&mut self, socs: &Buffer<true, Arc<Mutex<Socket>>>, op: Operation) -> PosixResult<()> {
+    pub fn ctl(
+        &mut self,
+        socs: &Buffer<true, Arc<Mutex<Socket>>>,
+        op: Operation,
+    ) -> PosixResult<()> {
         if matches!(op, Operation::Add { .. }) {
             self.counter += 1;
         } else if matches!(op, Operation::Del(_, _)) {
@@ -89,46 +93,48 @@ impl Dpoll {
             return self.epoll.ctl(op);
         }
         match op {
-            Operation::Add { qd, idx, evs, data } => {
+            Operation::Add { idx, evs, data } => {
                 self.items.insert(Item {
                     evs,
-                    idx,
                     data,
                     on_readylist: false,
                     soc: socs.get(idx).unwrap().clone(),
                 });
-            },
-            Operation::Del(qd, index) => {
+            }
+            Operation::Del(qd, _) => {
                 let it = self.items.take(Item::dummy(qd.unwrap())).unwrap();
 
                 if it.lock().unwrap().on_readylist {
                     self.ready_list.remove(&it);
                 }
-            },
-            Operation::Mod(qd, index, event) => {
+            }
+            Operation::Mod(qd, _, event) => {
                 self.items
                     .get(Item::dummy(qd.unwrap()))
                     .unwrap()
-                    .lock().unwrap()
+                    .lock()
+                    .unwrap()
                     .evs = event;
-            },
+            }
         }
 
         return Ok(());
     }
 
-    fn wait(
-        &mut self,
-        timeout: Option<Duration>,
-    ) -> PosixResult<()> {
+    fn wait(&mut self, timeout: Option<Duration>) -> PosixResult<()> {
         if self.qtoks.is_empty() {
             trace!("there are no qtoks, not going to wait");
             return Ok(());
         }
         let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
         let res = res?;
-        let mut item = self.items.get(Item::dummy(res.qd)).unwrap();
-        item.lock().unwrap().soc.lock().unwrap().process_event(res.value.unwrap());
+        let item = self.items.get(Item::dummy(res.qd)).unwrap();
+        item.lock()
+            .unwrap()
+            .soc
+            .lock()
+            .unwrap()
+            .process_event(res.value.unwrap());
         self.ready_list.push(item);
 
         return Ok(());
@@ -137,8 +143,6 @@ impl Dpoll {
     fn get_and_schedule_events(&mut self) {
         self.qtoks.clear();
         self.qtoks.reserve(self.items.len() * 2);
-
-        let mut added_events = 0;
 
         let mut list = ReadyList::new();
         let mut delete_list = ReadyList::new();
@@ -174,10 +178,7 @@ impl Dpoll {
         self.ready_list.append(list);
     }
 
-    fn drain_ready_list(
-        &mut self,
-        evs: &mut [MaybeUninit<epoll_event>],
-    ) -> usize {
+    fn drain_ready_list(&mut self, evs: &mut [MaybeUninit<epoll_event>]) -> usize {
         return self.ready_list.drain(evs.len(), |i, soc, data| {
             let events = soc.available_events(Event::all());
             evs[i] = MaybeUninit::new(epoll_event {
@@ -238,4 +239,3 @@ impl Dpoll {
         return Ok(evs_len);
     }
 }
-

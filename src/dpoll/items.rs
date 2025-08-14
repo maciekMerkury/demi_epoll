@@ -1,4 +1,7 @@
-use std::{cell::RefCell, collections::{BTreeMap, btree_map::Values}, sync::{Arc, Mutex}};
+use std::{
+    collections::{BTreeMap, btree_map::Values},
+    sync::{Arc, Mutex},
+};
 
 use crate::wrappers::demi;
 
@@ -6,7 +9,7 @@ use super::item::Item;
 
 #[derive(Debug)]
 pub struct Items {
-    inner: BTreeMap<demi::DemiQd, Arc<Mutex<Item>>>
+    inner: BTreeMap<demi::DemiQd, Arc<Mutex<Item>>>,
 }
 
 impl Items {

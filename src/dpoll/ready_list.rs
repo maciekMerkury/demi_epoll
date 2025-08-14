@@ -1,6 +1,9 @@
-use std::{cell::RefCell, collections::LinkedList, sync::{Arc, Mutex}, thread::current};
+use std::{
+    collections::LinkedList,
+    sync::{Arc, Mutex},
+};
 
-use crate::{buffer::Index, socket::Socket};
+use crate::socket::Socket;
 
 use super::item::Item;
 
