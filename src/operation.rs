@@ -186,7 +186,7 @@ where
     #[allow(dead_code)]
     #[inline]
     pub fn block(&mut self) {
-        self.wait(None);
+        return self.wait(None);
     }
 
     fn wait(&mut self, timeout: Option<Duration>) {
@@ -197,18 +197,17 @@ where
         };
 
         let res = match demi::wait(tok, timeout) {
-            Ok(res) => Some(Ok(res)),
+            Ok(res) => res,
             Err(err) => {
-                if err.posix == PosixError::WOULDBLOCK {
-                    None
+                if err == PosixError::WOULDBLOCK {
+                    return;
                 } else {
                     panic!("{}", err);
                 }
             }
         };
 
-        if let Some(res) = res {
-            *self = Self::Completed(res.map(T::from_qresult));
-        }
+        let res = res.map_err(|e| e.posix).map(T::from_qresult);
+        *self = Self::Completed(res);
     }
 }

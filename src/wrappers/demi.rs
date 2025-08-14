@@ -426,7 +426,7 @@ impl SocketQd {
     }
 }
 
-pub fn wait(tok: QToken, timeout: Option<Duration>) -> Result<QResult, QResultError> {
+pub fn wait(tok: QToken, timeout: Option<Duration>) -> PosixResult<Result<QResult, QResultError>> {
     let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::uninit();
     let ts: raw::timespec;
     let ts_ptr = if let Some(d) = timeout {
@@ -436,14 +436,14 @@ pub fn wait(tok: QToken, timeout: Option<Duration>) -> Result<QResult, QResultEr
         std::ptr::null()
     };
 
-    PosixError::from_error_code(unsafe { raw::demi_wait(res.as_mut_ptr(), tok, ts_ptr) }).unwrap();
-    return unsafe { res.assume_init() }.try_into();
+    PosixError::from_error_code(unsafe { raw::demi_wait(res.as_mut_ptr(), tok, ts_ptr) })?;
+    return Ok(unsafe { res.assume_init() }.try_into());
 }
 
 pub fn wait_any(
     toks: &[QToken],
     timeout: Option<Duration>,
-) -> (usize, Result<QResult, QResultError>) {
+) -> PosixResult<(usize, Result<QResult, QResultError>)> {
     let mut res: MaybeUninit<raw::demi_qresult> = MaybeUninit::zeroed();
     let ts: raw::timespec;
     let ts_ptr = if let Some(d) = timeout {
@@ -462,11 +462,10 @@ pub fn wait_any(
             toks.len().try_into().unwrap(),
             ts_ptr,
         )
-    })
-    .unwrap();
+    })?;
 
-    return (
+    return Ok((
         unsafe { off.assume_init() }.try_into().unwrap(),
         unsafe { res.assume_init() }.try_into(),
-    );
+    ));
 }

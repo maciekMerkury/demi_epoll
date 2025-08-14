@@ -126,7 +126,7 @@ impl Dpoll {
             trace!("there are no qtoks, not going to wait");
             return Ok(());
         }
-        let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout);
+        let (_, res) = demi::wait_any(self.qtoks.as_slice(), timeout)?;
         let item;
         match res {
             Ok(res) => {
