@@ -1,0 +1,17 @@
+[package]
+name = "demi_epoll"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bitfields = "1.0.0"
+bitflags = "2.9.1"
+env_logger = "0.11.8"
+lazy_static = "1.5.0"
+libc = { version = "0.2.174", features = ["extra_traits"] }
+log = "0.4.27"
+thiserror = "2"
+
+[lib]
+crate-type = ["cdylib"]
+

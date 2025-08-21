@@ -1,0 +1,10 @@
+language = "c"
+
+pragma_once = true
+
+sys_includes = ["sys/epoll.h", "sys/socket.h"]
+
+tab_width = 4
+
+documentation_style = "c++"
+
